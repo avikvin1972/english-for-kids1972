@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Проверка связки Firebase + GitHub Pages</title>
+<style>
+  body { font-family: system-ui, sans-serif; max-width: 480px; margin: 40px auto; padding: 0 16px; }
+  #status { padding: 16px; border-radius: 8px; background: #f0f0f0; margin-top: 16px; white-space: pre-wrap; }
+  .ok { background: #d4f7d4; }
+  .err { background: #f7d4d4; }
+  button { padding: 10px 16px; font-size: 16px; cursor: pointer; }
+</style>
+</head>
+<body>
+  <h1>Проверка связки</h1>
+  <p>Эта страница проверяет: подключение к Firebase, анонимный вход и запись/чтение тестовой записи в Firestore.</p>
+  <button id="testBtn">Запустить проверку</button>
+  <div id="status">Ожидание запуска…</div>
+
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.13.0/firebase-app.js";
+    import { getAuth, signInAnonymously } from "https://www.gstatic.com/firebasejs/10.13.0/firebase-auth.js";
+    import { getFirestore, doc, setDoc, getDoc } from "https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js";
+    import { firebaseConfig } from "./firebase-config.js";
+
+    const statusEl = document.getElementById("status");
+    const btn = document.getElementById("testBtn");
+
+    function setStatus(text, cls) {
+      statusEl.textContent = text;
+      statusEl.className = cls || "";
+    }
+
+    btn.addEventListener("click", async () => {
+      try {
+        setStatus("Инициализация Firebase…");
+        const app = initializeApp(firebaseConfig);
+        const auth = getAuth(app);
+        const db = getFirestore(app);
+
+        setStatus("Анонимный вход…");
+        const cred = await signInAnonymously(auth);
+        const uid = cred.user.uid;
+
+        setStatus("Запись тестового документа…");
+        const ref = doc(db, "connectionTest", uid);
+        await setDoc(ref, { checkedAt: new Date().toISOString() });
+
+        setStatus("Чтение обратно…");
+        const snap = await getDoc(ref);
+
+        if (snap.exists()) {
+          setStatus(
+            "Всё работает!\nUID: " + uid + "\nЗаписано: " + snap.data().checkedAt,
+            "ok"
+          );
+        } else {
+          setStatus("Документ не найден после записи — проверьте правила Firestore.", "err");
+        }
+      } catch (e) {
+        setStatus("Ошибка: " + e.message, "err");
+      }
+    });
+  </script>
+</body>
+</html>
