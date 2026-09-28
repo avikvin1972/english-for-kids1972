@@ -31,7 +31,7 @@
 
 <script type="module">
 import { ready, saveProgress, speak, speakWait, randomFeedback, PHRASES,
-         getSpeakMode, setSpeakMode, recognitionSupported, listenOnce } from "../../shared/engine.js?v=3";
+         getSpeakMode, setSpeakMode, recognitionSupported, listenOnce } from "../../shared/engine.js?v=4";
 import { introSentence, noticeExamples, rememberItem, quizSentences, finalStory, sayPool } from "./data.js?v=3";
 
 const app = document.getElementById("app");
@@ -52,6 +52,8 @@ function pickSayItems(n = 6) {
   const rest = shuffle(sayPool.filter((x) => !chosen.includes(x)));
   return shuffle(chosen.concat(rest.slice(0, n - chosen.length)));
 }
+
+const pause = (ms) => new Promise((r) => setTimeout(r, ms));
 
 function clear() { app.innerHTML = ""; }
 
@@ -140,12 +142,14 @@ function renderRemember() {
   const choices = el("div", "choices");
   ["am", "is", "are"].forEach((word) => {
     const b = el("button", "choice", word);
-    b.onclick = () => {
+    b.onclick = async () => {
+      [...choices.children].forEach((c) => (c.disabled = true));
       document.getElementById("blank").textContent = rememberItem.correct;
-      speak(`${rememberItem.pronoun} ${rememberItem.correct} ${rememberItem.rest}.`);
       if (word === rememberItem.correct) b.classList.add("correct");
       else b.classList.add("wrong");
-      setTimeout(startQuiz, 900);
+      await speakWait(`${rememberItem.pronoun} ${rememberItem.correct} ${rememberItem.rest}.`);
+      await pause(300);
+      startQuiz();
     };
     choices.appendChild(b);
   });
@@ -184,34 +188,38 @@ function renderQuizItem() {
 }
 
 // ---------- Stage 5: ОБРАТНАЯ СВЯЗЬ ----------
-function handleAnswer(word, item, btn, choices, feedback) {
+async function handleAnswer(word, item, btn, choices, feedback) {
   [...choices.children].forEach((c) => (c.disabled = true));
   document.getElementById("blank").textContent = word;
+  const sentence = `${item.pronoun} ${item.correct} ${item.rest}.`;
   if (word === item.correct) {
     correctCount++;
     btn.classList.add("correct");
     const fb = randomFeedback("correct");
     feedback.textContent = fb.text;
     feedback.className = "feedback ok";
-    speak(`${item.pronoun} ${item.correct} ${item.rest}. ${fb.text}`, fb.audioFileId);
-    setTimeout(() => { quizIndex++; renderQuizItem(); }, 1100);
+    // Сначала договариваем предложение и похвалу целиком, только потом следующий экран
+    await speakWait(`${sentence} ${fb.text}`);
+    await pause(300);
+    quizIndex++;
+    renderQuizItem();
   } else {
     btn.classList.add("wrong");
     const fb = randomFeedback("tryAgain");
     feedback.textContent = fb.text;
     feedback.className = "feedback no";
-    speak(fb.text, fb.audioFileId);
-    setTimeout(() => {
-      [...choices.children].forEach((c) => {
-        c.disabled = false;
-        c.classList.remove("wrong");
-      });
-      const rightBtn = [...choices.children].find((c) => c.textContent === item.correct);
-      rightBtn.classList.add("correct");
-      document.getElementById("blank").textContent = item.correct;
-      speak(`${item.pronoun} ${item.correct} ${item.rest}.`, null, { queue: true });
-      setTimeout(() => { quizIndex++; renderQuizItem(); }, 2200);
-    }, 1400);
+    await speakWait(fb.text, fb.audioFileId);
+    [...choices.children].forEach((c) => {
+      c.disabled = false;
+      c.classList.remove("wrong");
+    });
+    const rightBtn = [...choices.children].find((c) => c.textContent === item.correct);
+    rightBtn.classList.add("correct");
+    document.getElementById("blank").textContent = item.correct;
+    await speakWait(sentence);
+    await pause(300);
+    quizIndex++;
+    renderQuizItem();
   }
 }
 
@@ -251,26 +259,30 @@ function renderSay(i, attempts = 0) {
         const fb = randomFeedback("correct");
         feedback.textContent = fb.text;
         feedback.className = "feedback ok";
-        speak(fb.text, fb.audioFileId);
-        setTimeout(next, 1400);
+        await speakWait(fb.text, fb.audioFileId);
+        await pause(300);
+        next();
       } else if (res.status === "denied" || res.status === "unsupported" || res.status === "error") {
         speakMode = "self";
         feedback.textContent = PHRASES.noMic;
         feedback.className = "feedback no";
-        speak(PHRASES.noMic);
-        setTimeout(() => renderSay(i, 0), 2200);
+        await speakWait(PHRASES.noMic);
+        await pause(300);
+        renderSay(i, 0);
       } else if (attempts >= 1) {
         feedback.textContent = PHRASES.together;
         feedback.className = "feedback";
-        speak(PHRASES.together);
-        speak(text, null, { queue: true });
-        setTimeout(next, 3200);
+        await speakWait(PHRASES.together);
+        await speakWait(text);
+        await pause(300);
+        next();
       } else {
         const fb = randomFeedback("tryAgain");
         feedback.textContent = fb.text;
         feedback.className = "feedback no";
-        speak(fb.text, fb.audioFileId);
-        setTimeout(() => renderSay(i, attempts + 1), 1800);
+        await speakWait(fb.text, fb.audioFileId);
+        await pause(300);
+        renderSay(i, attempts + 1);
       }
     };
     row.appendChild(mic);
