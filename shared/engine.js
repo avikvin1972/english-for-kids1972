@@ -87,10 +87,27 @@ export function speakWait(text, audioFileId) {
   });
 }
 
+// Голос для озвучки: явно выбираем английский, чтобы движок не читал слова как русские/буквы.
+function pickEnglishVoice() {
+  const voices = speechSynthesis.getVoices() || [];
+  return voices.find((v) => v.lang === "en-US")
+      || voices.find((v) => v.lang === "en_US")
+      || voices.find((v) => v.lang && v.lang.toLowerCase().startsWith("en"))
+      || null;
+}
+
+// Некоторые движки читают "He" как символ гелия, по буквам «эйч-и».
+// Строчное "he" читается как местоимение.
+function fixForSpeech(text) {
+  return text.replace(/\bHe\b/g, "he");
+}
+
 function speakBrowser(text, queue = false, onend) {
   if (!("speechSynthesis" in window)) { if (onend) onend(); return; }
-  const utter = new SpeechSynthesisUtterance(text);
+  const utter = new SpeechSynthesisUtterance(fixForSpeech(text));
   utter.lang = "en-US";
+  const voice = pickEnglishVoice();
+  if (voice) utter.voice = voice;
   utter.rate = 0.9;
   utter.pitch = 1.1;
   if (onend) { utter.onend = onend; utter.onerror = onend; }
@@ -131,11 +148,13 @@ export function randomFeedback(kind) {
   return pool[Math.floor(Math.random() * pool.length)];
 }
 
-// ---------- Произнесение фраз ----------
-// Режим выбирается на экране настроек и хранится на этом устройстве:
-// "auto" — распознавание речи в браузере, "self" — ребёнок сам отмечает «Я сказал».
+// ---------- Настройки произнесения фраз ----------
+// Всё хранится на этом устройстве.
 const SPEAK_MODE_KEY = "efk-speak-mode";
+const ACCURACY_KEY = "efk-accuracy";
+const MAX_TRIES_KEY = "efk-max-tries";
 
+// "auto" — распознавание речи в браузере, "self" — ребёнок сам отмечает «Я сказал».
 export function getSpeakMode() {
   try { return localStorage.getItem(SPEAK_MODE_KEY); } catch { return null; }
 }
@@ -144,24 +163,67 @@ export function setSpeakMode(mode) {
   try { localStorage.setItem(SPEAK_MODE_KEY, mode); } catch { /* не критично */ }
 }
 
+// Доля слов фразы, которая должна совпасть, чтобы фраза засчиталась.
+// Например, для фразы из трёх слов: мягко и средне — 2 из 3, строго — все 3.
+export const ACCURACY_LEVELS = {
+  soft:   { label: "Мягко",  threshold: 0.5,  hint: "Засчитывается, если распознана примерно половина слов." },
+  medium: { label: "Средне", threshold: 0.66, hint: "Нужно, чтобы распознались две трети слов." },
+  strict: { label: "Строго", threshold: 1.0,  hint: "Нужно, чтобы распознались все слова фразы." }
+};
+
+export function getAccuracy() {
+  try {
+    const v = localStorage.getItem(ACCURACY_KEY);
+    return ACCURACY_LEVELS[v] ? v : "soft";
+  } catch { return "soft"; }
+}
+
+export function setAccuracy(level) {
+  try { localStorage.setItem(ACCURACY_KEY, level); } catch { /* не критично */ }
+}
+
+// Сколько попыток у ребёнка на фразу, прежде чем приложение скажет её само.
+export const TRIES_OPTIONS = [1, 2, 3, 5];
+
+export function getMaxTries() {
+  try {
+    const n = parseInt(localStorage.getItem(MAX_TRIES_KEY), 10);
+    return TRIES_OPTIONS.includes(n) ? n : 2;
+  } catch { return 2; }
+}
+
+export function setMaxTries(n) {
+  try { localStorage.setItem(MAX_TRIES_KEY, String(n)); } catch { /* не критично */ }
+}
+
+// ---------- Распознавание речи ----------
 const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
 
 export function recognitionSupported() {
   return !!SR;
 }
 
+// Распознаватель часто возвращает сокращения ("he's", "I'm"), а цель — "he is", "I am".
+const CONTRACTIONS = {
+  "i'm": "i am", "you're": "you are", "he's": "he is", "she's": "she is",
+  "it's": "it is", "we're": "we are", "they're": "they are",
+  "that's": "that is", "what's": "what is", "who's": "who is"
+};
+
 function words(s) {
-  return s.toLowerCase().replace(/[^a-z' ]/g, " ").split(/\s+/).filter(Boolean);
+  let t = s.toLowerCase().replace(/[’‘]/g, "'");
+  t = t.replace(/\b[a-z]+'(?:m|s|re)\b/g, (m) => CONTRACTIONS[m] || m);
+  return t.replace(/[^a-z' ]/g, " ").split(/\s+/).filter(Boolean);
 }
 
 /**
  * Слушает одну фразу и сравнивает с целевой.
- * Возвращает { status, heard }, status: "match" | "nomatch" | "denied" | "unsupported" | "error".
- * Проверка мягкая: достаточно, чтобы совпало 75% слов целевой фразы.
+ * threshold — доля слов целевой фразы, которая должна совпасть (0..1).
+ * Возвращает { status, heard, score }, status: "match" | "nomatch" | "denied" | "unsupported" | "error".
  */
-export function listenOnce(target) {
+export function listenOnce(target, threshold = 0.5) {
   return new Promise((resolve) => {
-    if (!SR) return resolve({ status: "unsupported", heard: "" });
+    if (!SR) return resolve({ status: "unsupported", heard: "", score: 0 });
     const rec = new SR();
     rec.lang = "en-US";
     rec.maxAlternatives = 5;
@@ -177,14 +239,18 @@ export function listenOnce(target) {
         const hit = targetWords.filter((w) => heard.includes(w)).length;
         best = Math.max(best, hit / targetWords.length);
       }
-      finish({ status: best >= 0.75 ? "match" : "nomatch", heard: alts[0] });
+      finish({
+        status: best >= threshold - 0.001 ? "match" : "nomatch",
+        heard: alts[0],
+        score: best
+      });
     };
     rec.onerror = (e) => {
       const denied = e.error === "not-allowed" || e.error === "service-not-allowed";
-      finish({ status: denied ? "denied" : "nomatch", heard: "" });
+      finish({ status: denied ? "denied" : "nomatch", heard: "", score: 0 });
     };
-    rec.onnomatch = () => finish({ status: "nomatch", heard: "" });
-    rec.onend = () => finish({ status: "nomatch", heard: "" });
-    try { rec.start(); } catch { finish({ status: "error", heard: "" }); }
+    rec.onnomatch = () => finish({ status: "nomatch", heard: "", score: 0 });
+    rec.onend = () => finish({ status: "nomatch", heard: "", score: 0 });
+    try { rec.start(); } catch { finish({ status: "error", heard: "", score: 0 }); }
   });
 }
