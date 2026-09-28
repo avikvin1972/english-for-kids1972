@@ -177,9 +177,10 @@ function renderQuizItem() {
     `${item.pronoun} <span class="blank" id="blank">___</span> ${item.rest}.`));
   const choices = el("div", "choices");
   const feedback = el("p", "feedback");
+  const state = { attempts: 0, locked: false };
   ["am", "is", "are"].forEach((word) => {
     const b = el("button", "choice", word);
-    b.onclick = () => handleAnswer(word, item, b, choices, feedback);
+    b.onclick = () => handleAnswer(word, item, b, choices, feedback, state);
     choices.appendChild(b);
   });
   app.appendChild(choices);
@@ -188,39 +189,54 @@ function renderQuizItem() {
 }
 
 // ---------- Stage 5: ОБРАТНАЯ СВЯЗЬ ----------
-async function handleAnswer(word, item, btn, choices, feedback) {
-  [...choices.children].forEach((c) => (c.disabled = true));
-  document.getElementById("blank").textContent = word;
+async function handleAnswer(word, item, btn, choices, feedback, state) {
+  if (state.locked) return;
+  state.locked = true;
+  const buttons = [...choices.children];
   const sentence = `${item.pronoun} ${item.correct} ${item.rest}.`;
+  const blank = document.getElementById("blank");
+
   if (word === item.correct) {
-    correctCount++;
+    // В звёзды идёт только ответ с первой попытки
+    if (state.attempts === 0) correctCount++;
+    buttons.forEach((c) => (c.disabled = true));
     btn.classList.add("correct");
+    blank.textContent = word;
     const fb = randomFeedback("correct");
     feedback.textContent = fb.text;
     feedback.className = "feedback ok";
-    // Сначала договариваем предложение и похвалу целиком, только потом следующий экран
+    // Договариваем предложение и похвалу целиком, только потом следующий экран
     await speakWait(`${sentence} ${fb.text}`);
     await pause(300);
     quizIndex++;
     renderQuizItem();
-  } else {
-    btn.classList.add("wrong");
-    const fb = randomFeedback("tryAgain");
-    feedback.textContent = fb.text;
-    feedback.className = "feedback no";
-    await speakWait(fb.text, fb.audioFileId);
-    [...choices.children].forEach((c) => {
-      c.disabled = false;
-      c.classList.remove("wrong");
-    });
-    const rightBtn = [...choices.children].find((c) => c.textContent === item.correct);
-    rightBtn.classList.add("correct");
-    document.getElementById("blank").textContent = item.correct;
-    await speakWait(sentence);
-    await pause(300);
-    quizIndex++;
-    renderQuizItem();
+    return;
   }
+
+  // Неверно: даём попробовать ещё раз
+  state.attempts++;
+  buttons.forEach((c) => (c.disabled = true));
+  btn.classList.add("wrong");
+  const fb = randomFeedback("tryAgain");
+  feedback.textContent = fb.text;
+  feedback.className = "feedback no";
+  await speakWait(fb.text, fb.audioFileId);
+
+  if (state.attempts === 1) {
+    // Первая ошибка: остальные варианты снова доступны, ответ не показываем
+    buttons.forEach((c) => { if (!c.classList.contains("wrong")) c.disabled = false; });
+  } else {
+    // Вторая ошибка: остался один вариант — подсвечиваем его, читаем предложение,
+    // ребёнок сам нажимает правильное слово
+    const rightBtn = buttons.find((c) => c.textContent === item.correct);
+    rightBtn.classList.add("correct");
+    rightBtn.disabled = false;
+    feedback.textContent = PHRASES.tapWord;
+    feedback.className = "feedback";
+    speak(sentence);
+    speak(PHRASES.tapWord, null, { queue: true });
+  }
+  state.locked = false;
 }
 
 // ---------- Stage 4b: СКАЗАТЬ вслух ----------
