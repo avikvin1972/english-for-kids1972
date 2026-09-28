@@ -1,0 +1,141 @@
+@import url('https://fonts.googleapis.com/css2?family=Baloo+2:wght@600;800&family=Nunito:wght@500;700;800&display=swap');
+
+:root {
+  --sky: #7ECBE8;
+  --sun: #FFC93C;
+  --grass: #06D6A0;
+  --coral: #F26D6D;
+  --ink: #17324A;
+  --cream: #FFF9EE;
+  --card-radius: 28px;
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  min-height: 100%;
+  background: linear-gradient(180deg, var(--sky) 0%, var(--sky) 35%, var(--cream) 35%);
+  font-family: 'Nunito', sans-serif;
+  color: var(--ink);
+}
+
+.wrap {
+  max-width: 480px;
+  margin: 0 auto;
+  padding: 24px 16px 40px;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+h1, h2, .headline {
+  font-family: 'Baloo 2', sans-serif;
+  font-weight: 800;
+  margin: 0 0 12px;
+}
+
+.topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  color: white;
+  font-family: 'Baloo 2', sans-serif;
+  font-weight: 600;
+  font-size: 1.1rem;
+  margin-bottom: 20px;
+}
+
+.card {
+  background: white;
+  border-radius: var(--card-radius);
+  padding: 28px 20px;
+  box-shadow: 0 10px 0 rgba(23, 50, 74, 0.08);
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 20px;
+  text-align: center;
+}
+
+.emoji-big {
+  font-size: 5rem;
+  line-height: 1;
+}
+
+.sentence {
+  font-size: 1.6rem;
+  font-weight: 700;
+}
+
+.sentence .blank {
+  display: inline-block;
+  min-width: 64px;
+  border-bottom: 4px solid var(--sun);
+}
+
+.sentence .highlight {
+  color: var(--grass);
+  cursor: pointer;
+}
+
+.choices {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+button.choice {
+  font-family: 'Baloo 2', sans-serif;
+  font-size: 1.3rem;
+  font-weight: 600;
+  padding: 14px 26px;
+  border: none;
+  border-radius: 18px;
+  background: var(--sun);
+  color: var(--ink);
+  cursor: pointer;
+  box-shadow: 0 6px 0 #d9a11f;
+}
+
+button.choice:active { transform: translateY(4px); box-shadow: none; }
+
+button.choice.correct { background: var(--grass); box-shadow: 0 6px 0 #039070; color: white; }
+button.choice.wrong { background: var(--coral); box-shadow: 0 6px 0 #b94a4a; color: white; }
+
+button.primary {
+  font-family: 'Baloo 2', sans-serif;
+  font-size: 1.2rem;
+  font-weight: 700;
+  padding: 14px 32px;
+  border: none;
+  border-radius: 18px;
+  background: var(--grass);
+  color: white;
+  cursor: pointer;
+  box-shadow: 0 6px 0 #039070;
+}
+
+button.primary:active { transform: translateY(4px); box-shadow: none; }
+
+.feedback {
+  font-family: 'Baloo 2', sans-serif;
+  font-size: 1.2rem;
+  min-height: 1.6em;
+}
+
+.feedback.ok { color: var(--grass); }
+.feedback.no { color: var(--coral); }
+
+.stars {
+  font-size: 1.6rem;
+  letter-spacing: 4px;
+}
+
+.hint {
+  font-size: 0.95rem;
+  color: #6b7f8f;
+}
