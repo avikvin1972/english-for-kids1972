@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Unit 1 — am / is / are</title>
+<link rel="stylesheet" href="../../shared/styles.css">
+</head>
+<body>
+<div class="wrap">
+  <div class="topbar">
+    <span>🌻 Unit 1</span>
+    <span id="uid-badge" class="hint" style="color:white;"></span>
+  </div>
+  <div class="card" id="app">
+    <p class="hint">Загрузка…</p>
+  </div>
+</div>
+
+<script type="module">
+import { ready, saveProgress, speak, randomFeedback } from "../../shared/engine.js";
+import { introSentence, noticeExamples, rememberItem, quizSentences, finalStory } from "./data.js";
+
+const app = document.getElementById("app");
+let quizIndex = 0;
+let correctCount = 0;
+
+function clear() { app.innerHTML = ""; }
+
+function el(tag, cls, html) {
+  const e = document.createElement(tag);
+  if (cls) e.className = cls;
+  if (html !== undefined) e.innerHTML = html;
+  return e;
+}
+
+// ---------- Stage 1: ПОНЯТЬ ----------
+function renderIntro() {
+  clear();
+  app.appendChild(el("div", "emoji-big", introSentence.image));
+  const sentenceHtml = introSentence.text.replace(
+    introSentence.highlight,
+    `<span class="highlight">${introSentence.highlight}</span>`
+  );
+  app.appendChild(el("p", "sentence", sentenceHtml));
+  const next = el("button", "primary", "Дальше");
+  next.onclick = () => renderNotice(0);
+  app.appendChild(next);
+  speak(introSentence.text, introSentence.audioFileId);
+}
+
+// ---------- Stage 2: ЗАМЕТИТЬ ----------
+function renderNotice(i) {
+  clear();
+  if (i >= noticeExamples.length) return renderRemember();
+  const item = noticeExamples[i];
+  app.appendChild(el("div", "emoji-big", item.image));
+  const sentenceHtml = item.text.replace(
+    item.highlight,
+    `<span class="highlight" id="hl">${item.highlight}</span>`
+  );
+  const p = el("p", "sentence", sentenceHtml);
+  app.appendChild(p);
+  app.appendChild(el("p", "hint", "Нажми на цветное слово"));
+  speak(item.text);
+  p.querySelector("#hl").onclick = () => renderNotice(i + 1);
+}
+
+// ---------- Stage 3: ВСПОМНИТЬ (без оценки) ----------
+function renderRemember() {
+  clear();
+  app.appendChild(el("div", "emoji-big", rememberItem.image));
+  app.appendChild(el("p", "sentence",
+    `${rememberItem.pronoun} <span class="blank" id="blank">___</span> ${rememberItem.rest}.`));
+  const choices = el("div", "choices");
+  ["am", "is", "are"].forEach((word) => {
+    const b = el("button", "choice", word);
+    b.onclick = () => {
+      document.getElementById("blank").textContent = rememberItem.correct;
+      speak(`${rememberItem.pronoun} ${rememberItem.correct} ${rememberItem.rest}.`);
+      if (word === rememberItem.correct) b.classList.add("correct");
+      else b.classList.add("wrong");
+      setTimeout(startQuiz, 900);
+    };
+    choices.appendChild(b);
+  });
+  app.appendChild(choices);
+  speak(`${rememberItem.pronoun} ... ${rememberItem.rest}. Which word?`);
+}
+
+// ---------- Stage 4–5: СКАЗАТЬ + ОБРАТНАЯ СВЯЗЬ ----------
+function startQuiz() {
+  quizIndex = 0;
+  correctCount = 0;
+  renderQuizItem();
+}
+
+function renderQuizItem() {
+  clear();
+  if (quizIndex >= quizSentences.length) return renderStory();
+  const item = quizSentences[quizIndex];
+  app.appendChild(el("div", "emoji-big", item.image));
+  app.appendChild(el("p", "sentence",
+    `${item.pronoun} <span class="blank" id="blank">___</span> ${item.rest}.`));
+  const choices = el("div", "choices");
+  const feedback = el("p", "feedback");
+  ["am", "is", "are"].forEach((word) => {
+    const b = el("button", "choice", word);
+    b.onclick = () => handleAnswer(word, item, b, choices, feedback);
+    choices.appendChild(b);
+  });
+  app.appendChild(choices);
+  app.appendChild(feedback);
+  speak(`${item.pronoun} ... ${item.rest}.`);
+}
+
+function handleAnswer(word, item, btn, choices, feedback) {
+  [...choices.children].forEach((c) => (c.disabled = true));
+  document.getElementById("blank").textContent = word;
+  if (word === item.correct) {
+    correctCount++;
+    btn.classList.add("correct");
+    const fb = randomFeedback("correct");
+    feedback.textContent = fb.text;
+    feedback.className = "feedback ok";
+    speak(`${item.pronoun} ${item.correct} ${item.rest}. ${fb.text}`, fb.audioFileId);
+    setTimeout(() => { quizIndex++; renderQuizItem(); }, 1100);
+  } else {
+    btn.classList.add("wrong");
+    const fb = randomFeedback("tryAgain");
+    feedback.textContent = fb.text;
+    feedback.className = "feedback no";
+    speak(fb.text, fb.audioFileId);
+    setTimeout(() => {
+      [...choices.children].forEach((c) => {
+        c.disabled = false;
+        c.classList.remove("wrong");
+      });
+      const rightBtn = [...choices.children].find((c) => c.textContent === item.correct);
+      rightBtn.classList.add("correct");
+      document.getElementById("blank").textContent = item.correct;
+      speak(`${item.pronoun} ${item.correct} ${item.rest}.`);
+      setTimeout(() => { quizIndex++; renderQuizItem(); }, 1200);
+    }, 900);
+  }
+}
+
+// ---------- Stage 7: НОВЫЙ КОНТЕКСТ ----------
+function renderStory() {
+  clear();
+  app.appendChild(el("div", "emoji-big", finalStory.image));
+  app.appendChild(el("p", "sentence", finalStory.text));
+  const next = el("button", "primary", "Готово");
+  next.onclick = renderResults;
+  app.appendChild(next);
+  speak(finalStory.text);
+}
+
+// ---------- Результаты ----------
+async function renderResults() {
+  clear();
+  const total = quizSentences.length;
+  app.appendChild(el("h2", "headline", "Отлично!"));
+  const starsStr = "⭐".repeat(correctCount) + "☆".repeat(total - correctCount);
+  app.appendChild(el("p", "stars", starsStr));
+  app.appendChild(el("p", "hint", `${correctCount} из ${total}`));
+  const again = el("button", "primary", "Играть ещё раз");
+  again.onclick = renderIntro;
+  app.appendChild(again);
+  await saveProgress("unit-01", { correct: correctCount, total });
+}
+
+// ---------- Старт ----------
+ready().then((uid) => {
+  document.getElementById("uid-badge").textContent = uid.slice(0, 6);
+  renderIntro();
+});
+</script>
+</body>
+</html>
