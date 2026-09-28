@@ -61,25 +61,48 @@ export async function loadProgress(unitId) {
  * Озвучивает фразу. Если указан audioFileId и файл существует в /audio/ —
  * играет записанный звук. Иначе — голос браузера. Замена происходит
  * фраза за фразой: положили файл в /audio/ — с этого момента звучит он.
+ * opts.queue = true — не прерывать то, что уже звучит, а встать в очередь.
  */
-export function speak(text, audioFileId) {
+export function speak(text, audioFileId, opts = {}) {
   if (audioFileId) {
     const audio = new Audio(`../../audio/${audioFileId}.mp3`);
-    audio.play().catch(() => speakBrowser(text));
+    audio.play().catch(() => speakBrowser(text, opts.queue));
   } else {
-    speakBrowser(text);
+    speakBrowser(text, opts.queue);
   }
 }
 
-function speakBrowser(text) {
-  if (!("speechSynthesis" in window)) return;
+/** Озвучивает фразу и ждёт, пока она закончится (нужно перед включением микрофона). */
+export function speakWait(text) {
+  return new Promise((resolve) => {
+    speakBrowser(text, false, resolve);
+    setTimeout(resolve, 4000); // страховка, если браузер не сообщил об окончании
+  });
+}
+
+function speakBrowser(text, queue = false, onend) {
+  if (!("speechSynthesis" in window)) { if (onend) onend(); return; }
   const utter = new SpeechSynthesisUtterance(text);
   utter.lang = "en-US";
   utter.rate = 0.9;
   utter.pitch = 1.1;
-  speechSynthesis.cancel();
+  if (onend) { utter.onend = onend; utter.onerror = onend; }
+  if (!queue) speechSynthesis.cancel();
   speechSynthesis.speak(utter);
 }
+
+// Фразы, которыми приложение комментирует действия ребёнка.
+// Каждая всегда и печатается на экране, и озвучивается.
+// Меняются в одном месте — здесь.
+export const PHRASES = {
+  tapWord: "Tap the word!",
+  whichWord: "Which word?",
+  sayIt: "Say it!",
+  go: "Go!",
+  together: "Let's say it together!",
+  noMic: "Tap the button.",
+  great: "Great job!"
+};
 
 // Пул фраз обратной связи для самого начала серии (минимальный
 // накопленный словарь). Позже пул будет расти вместе с пройденными
