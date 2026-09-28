@@ -13,6 +13,10 @@
   .opt:disabled { opacity: 0.5; cursor: not-allowed; }
   .opts { display: flex; flex-direction: column; gap: 12px; width: 100%; }
   .row { display: flex; gap: 12px; flex-wrap: wrap; justify-content: center; }
+  .pill { font-family: 'Nunito', sans-serif; font-size: 1rem; font-weight: 700; padding: 10px 16px;
+          border: 3px solid #d7e3ea; border-radius: 14px; background: white; color: var(--ink); cursor: pointer; }
+  .pill.selected { border-color: var(--grass); background: #e8fbf5; }
+  .heard { font-size: 0.9rem; color: #7b8a94; margin-top: 6px; }
 </style>
 </head>
 <body>
@@ -30,7 +34,9 @@
 
 <script type="module">
 import { ready, saveProgress, speak, speakWait, randomFeedback, PHRASES,
-         getSpeakMode, setSpeakMode, recognitionSupported, listenOnce } from "../../shared/engine.js?v=4";
+         getSpeakMode, setSpeakMode, recognitionSupported, listenOnce,
+         ACCURACY_LEVELS, getAccuracy, setAccuracy,
+         TRIES_OPTIONS, getMaxTries, setMaxTries } from "../../shared/engine.js?v=5";
 import { introSentence, noticeExamples, rememberItem, quizSentences, finalStory, sayPool } from "./data.js?v=3";
 
 const app = document.getElementById("app");
@@ -38,6 +44,8 @@ let quizIndex = 0;
 let correctCount = 0;
 let spokenCount = 0;
 let speakMode = getSpeakMode() || (recognitionSupported() ? "auto" : "self");
+let accuracy = getAccuracy();
+let maxTries = getMaxTries();
 
 // Из пула в 52 фразы выбираем 6 случайных, среди них минимум по одной с am, is и are
 let sayItems = [];
@@ -68,6 +76,8 @@ function renderSettings() {
   clear();
   const supported = recognitionSupported();
   let chosen = speakMode === "auto" && !supported ? "self" : speakMode;
+  let acc = accuracy;
+  let tries = maxTries;
 
   app.appendChild(el("h2", "headline", "Настройки"));
   app.appendChild(el("p", "hint", "Как ребёнок будет произносить фразы?"));
@@ -79,21 +89,57 @@ function renderSettings() {
     auto.disabled = true;
     auto.innerHTML += "<br><span class='hint'>Не работает в этом браузере (нужен Chrome или Edge).</span>";
   }
-  function paint() {
-    auto.classList.toggle("selected", chosen === "auto");
-    self.classList.toggle("selected", chosen === "self");
-  }
-  auto.onclick = () => { chosen = "auto"; paint(); };
-  self.onclick = () => { chosen = "self"; paint(); };
   opts.appendChild(auto);
   opts.appendChild(self);
   app.appendChild(opts);
+
+  // Дополнительные настройки — только для режима «Проверять голос»
+  const extra = el("div", "opts");
+  extra.style.marginTop = "18px";
+
+  extra.appendChild(el("p", "hint", "Точность распознавания голоса"));
+  const accRow = el("div", "row");
+  const accHint = el("p", "hint", "");
+  const accBtns = Object.entries(ACCURACY_LEVELS).map(([key, lvl]) => {
+    const b = el("button", "pill", lvl.label);
+    b.onclick = () => { acc = key; paint(); };
+    accRow.appendChild(b);
+    return [key, b];
+  });
+  extra.appendChild(accRow);
+  extra.appendChild(accHint);
+
+  extra.appendChild(el("p", "hint", "Сколько попыток у ребёнка, прежде чем приложение скажет фразу само"));
+  const triesRow = el("div", "row");
+  const triesBtns = TRIES_OPTIONS.map((n) => {
+    const b = el("button", "pill", String(n));
+    b.onclick = () => { tries = n; paint(); };
+    triesRow.appendChild(b);
+    return [n, b];
+  });
+  extra.appendChild(triesRow);
+  app.appendChild(extra);
+
+  function paint() {
+    auto.classList.toggle("selected", chosen === "auto");
+    self.classList.toggle("selected", chosen === "self");
+    accBtns.forEach(([k, b]) => b.classList.toggle("selected", k === acc));
+    accHint.textContent = ACCURACY_LEVELS[acc].hint;
+    triesBtns.forEach(([n, b]) => b.classList.toggle("selected", n === tries));
+    extra.style.display = chosen === "auto" ? "flex" : "none";
+  }
+  auto.onclick = () => { chosen = "auto"; paint(); };
+  self.onclick = () => { chosen = "self"; paint(); };
   paint();
 
   const start = el("button", "primary", "Начать");
   start.onclick = () => {
     speakMode = chosen;
+    accuracy = acc;
+    maxTries = tries;
     setSpeakMode(chosen);
+    setAccuracy(acc);
+    setMaxTries(tries);
     renderIntro();
   };
   app.appendChild(start);
@@ -239,7 +285,7 @@ async function handleAnswer(word, item, btn, choices, feedback, state) {
 }
 
 // ---------- Stage 4b: СКАЗАТЬ вслух ----------
-function renderSay(i, attempts = 0) {
+function renderSay(i, attempts = 0, lastHeard = null) {
   clear();
   if (i >= sayItems.length) return renderStory();
   const q = sayItems[i];
@@ -250,6 +296,11 @@ function renderSay(i, attempts = 0) {
   app.appendChild(el("div", "emoji-big", q.image));
   app.appendChild(el("p", "sentence", text));
   const feedback = el("p", "feedback");
+  const heardEl = el("p", "heard");
+  const showHeard = (heard) => {
+    heardEl.textContent = heard ? `Приложение услышало: «${heard}»` : "Приложение ничего не услышало";
+  };
+  if (lastHeard !== null) showHeard(lastHeard);
   const row = el("div", "row");
 
   const listen = el("button", "choice", "🔊 Послушать");
@@ -266,9 +317,10 @@ function renderSay(i, attempts = 0) {
       mic.disabled = true;
       feedback.className = "feedback";
       feedback.textContent = PHRASES.go;
+      heardEl.textContent = "";
       await speakWait(PHRASES.go);   // микрофон включаем только после того, как приложение договорило
       feedback.textContent = "🎤";
-      const res = await listenOnce(text);
+      const res = await listenOnce(text, ACCURACY_LEVELS[accuracy].threshold);
       if (res.status === "match") {
         spokenCount++;
         const fb = randomFeedback("correct");
@@ -284,7 +336,9 @@ function renderSay(i, attempts = 0) {
         await speakWait(PHRASES.noMic);
         await pause(300);
         renderSay(i, 0);
-      } else if (attempts >= 1) {
+      } else if (attempts + 1 >= maxTries) {
+        // Попытки закончились: приложение само говорит фразу и идёт дальше
+        showHeard(res.heard);
         feedback.textContent = PHRASES.together;
         feedback.className = "feedback";
         await speakWait(PHRASES.together);
@@ -292,18 +346,20 @@ function renderSay(i, attempts = 0) {
         await pause(300);
         next();
       } else {
+        showHeard(res.heard);
         const fb = randomFeedback("tryAgain");
         feedback.textContent = fb.text;
         feedback.className = "feedback no";
         await speakWait(fb.text, fb.audioFileId);
         await pause(300);
-        renderSay(i, attempts + 1);
+        renderSay(i, attempts + 1, res.heard);
       }
     };
     row.appendChild(mic);
   }
   app.appendChild(row);
   app.appendChild(feedback);
+  app.appendChild(heardEl);
   if (attempts === 0) {
     speak(text);
     speak(PHRASES.sayIt, null, { queue: true });
