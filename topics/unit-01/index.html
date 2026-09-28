@@ -315,6 +315,7 @@ function renderSay(i, attempts = 0, lastHeard = null) {
     const mic = el("button", "primary", "🎤 Сказать");
     mic.onclick = async () => {
       mic.disabled = true;
+      listen.disabled = true;   // пока микрофон занят, послушать нельзя
       feedback.className = "feedback";
       feedback.textContent = PHRASES.go;
       heardEl.textContent = "";
