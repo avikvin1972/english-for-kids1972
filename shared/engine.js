@@ -2,7 +2,7 @@
 // Не знает ничего про конкретные упражнения — только:
 // авторизация, сохранение/чтение прогресса, озвучка, фразы обратной связи.
 
-import { firebaseConfig } from "../../firebase-config.js";
+import { firebaseConfig } from "../firebase-config.js";
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.13.0/firebase-app.js";
 import { getAuth, signInAnonymously, onAuthStateChanged }
   from "https://www.gstatic.com/firebasejs/10.13.0/firebase-auth.js";
