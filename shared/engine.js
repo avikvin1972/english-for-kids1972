@@ -72,11 +72,18 @@ export function speak(text, audioFileId, opts = {}) {
   }
 }
 
-/** Озвучивает фразу и ждёт, пока она закончится (нужно перед включением микрофона). */
-export function speakWait(text) {
+/** Озвучивает фразу и ждёт, пока она закончится (перед сменой экрана и перед включением микрофона). */
+export function speakWait(text, audioFileId) {
   return new Promise((resolve) => {
-    speakBrowser(text, false, resolve);
-    setTimeout(resolve, 4000); // страховка, если браузер не сообщил об окончании
+    const safety = setTimeout(resolve, 6000); // страховка, если браузер не сообщил об окончании
+    const done = () => { clearTimeout(safety); resolve(); };
+    if (audioFileId) {
+      const audio = new Audio(`../../audio/${audioFileId}.mp3`);
+      audio.onended = done;
+      audio.play().catch(() => speakBrowser(text, false, done));
+    } else {
+      speakBrowser(text, false, done);
+    }
   });
 }
 
