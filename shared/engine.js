@@ -44,6 +44,8 @@ export async function saveProgress(unitId, result) {
     status: passed ? "passed" : "in_progress",
     lastScore: result.correct,
     outOf: result.total,
+    spokenCount: result.spokenCount ?? 0,
+    speakMode: result.speakMode ?? "unknown",
     lastPlayedAt: new Date().toISOString()
   }, { merge: true });
 }
@@ -97,4 +99,62 @@ const feedbackPool = {
 export function randomFeedback(kind) {
   const pool = feedbackPool[kind];
   return pool[Math.floor(Math.random() * pool.length)];
+}
+
+// ---------- Произнесение фраз ----------
+// Режим выбирается на экране настроек и хранится на этом устройстве:
+// "auto" — распознавание речи в браузере, "self" — ребёнок сам отмечает «Я сказал».
+const SPEAK_MODE_KEY = "efk-speak-mode";
+
+export function getSpeakMode() {
+  try { return localStorage.getItem(SPEAK_MODE_KEY); } catch { return null; }
+}
+
+export function setSpeakMode(mode) {
+  try { localStorage.setItem(SPEAK_MODE_KEY, mode); } catch { /* не критично */ }
+}
+
+const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+
+export function recognitionSupported() {
+  return !!SR;
+}
+
+function words(s) {
+  return s.toLowerCase().replace(/[^a-z' ]/g, " ").split(/\s+/).filter(Boolean);
+}
+
+/**
+ * Слушает одну фразу и сравнивает с целевой.
+ * Возвращает { status, heard }, status: "match" | "nomatch" | "denied" | "unsupported" | "error".
+ * Проверка мягкая: достаточно, чтобы совпало 75% слов целевой фразы.
+ */
+export function listenOnce(target) {
+  return new Promise((resolve) => {
+    if (!SR) return resolve({ status: "unsupported", heard: "" });
+    const rec = new SR();
+    rec.lang = "en-US";
+    rec.maxAlternatives = 5;
+    rec.interimResults = false;
+    let done = false;
+    const finish = (r) => { if (!done) { done = true; resolve(r); } };
+    rec.onresult = (e) => {
+      const alts = [...e.results[0]].map((a) => a.transcript);
+      const targetWords = words(target);
+      let best = 0;
+      for (const t of alts) {
+        const heard = words(t);
+        const hit = targetWords.filter((w) => heard.includes(w)).length;
+        best = Math.max(best, hit / targetWords.length);
+      }
+      finish({ status: best >= 0.75 ? "match" : "nomatch", heard: alts[0] });
+    };
+    rec.onerror = (e) => {
+      const denied = e.error === "not-allowed" || e.error === "service-not-allowed";
+      finish({ status: denied ? "denied" : "nomatch", heard: "" });
+    };
+    rec.onnomatch = () => finish({ status: "nomatch", heard: "" });
+    rec.onend = () => finish({ status: "nomatch", heard: "" });
+    try { rec.start(); } catch { finish({ status: "error", heard: "" }); }
+  });
 }
