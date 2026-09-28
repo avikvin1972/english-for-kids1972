@@ -47,3 +47,51 @@ export const finalStory = {
   text: "I am a dog. I am happy. You are my friend!",
   image: "🐶"
 };
+
+// Stage 4b — СКАЗАТЬ вслух: полный пул фраз (52). Приложение каждый раз
+// выбирает из него 6 случайных (минимум по одной с am, is и are).
+const adjectives = { happy: "😊", sad: "😢", big: "🐘", small: "🐭" };
+const nounEmoji = { boy: "👦", girl: "👧", cat: "🐱", dog: "🐶" };
+const pronouns = [
+  { word: "I", verb: "am" },
+  { word: "You", verb: "are" },
+  { word: "He", verb: "is" },
+  { word: "She", verb: "is" },
+  { word: "It", verb: "is" },
+  { word: "We", verb: "are" },
+  { word: "They", verb: "are" }
+];
+// Существительное после глагола — только логичные сочетания, артикль всегда "a"
+// (все четыре слова начинаются на согласный звук).
+const nounsFor = {
+  I: ["boy", "girl"],
+  You: ["boy", "girl"],
+  He: ["boy"],
+  She: ["girl"],
+  It: ["cat", "dog"]
+};
+
+function buildSayPool() {
+  const pool = [];
+  // 1. Местоимение + прилагательное (28)
+  for (const p of pronouns) {
+    for (const [adj, img] of Object.entries(adjectives)) {
+      pool.push({ text: `${p.word} ${p.verb} ${adj}.`, verb: p.verb, image: img });
+    }
+  }
+  // 2. Местоимение + a + существительное (8)
+  for (const p of pronouns) {
+    for (const noun of nounsFor[p.word] || []) {
+      pool.push({ text: `${p.word} ${p.verb} a ${noun}.`, verb: p.verb, image: nounEmoji[noun] });
+    }
+  }
+  // 3. A + существительное + is + прилагательное (16)
+  for (const [noun, img] of Object.entries(nounEmoji)) {
+    for (const adj of Object.keys(adjectives)) {
+      pool.push({ text: `A ${noun} is ${adj}.`, verb: "is", image: img });
+    }
+  }
+  return pool;
+}
+
+export const sayPool = buildSayPool();
