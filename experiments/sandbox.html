@@ -1,0 +1,347 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Стенд: распознавание речи</title>
+<style>
+  :root {
+    --bg: #faf7f0; --card: #ffffff; --ink: #1f2d3a; --hint: #7b8a94;
+    --grass: #14b881; --grass-bg: #e8fbf5; --line: #d7e3ea;
+    --ok: #14b881; --no: #e0574f;
+    box-sizing: border-box;
+    padding-top: env(safe-area-inset-top, 0px);
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #14181d; --card: #1d232b; --ink: #eef2f5; --hint: #8fa0ab;
+      --line: #2c3540; --grass-bg: #133328;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #14181d; --card: #1d232b; --ink: #eef2f5; --hint: #8fa0ab;
+    --line: #2c3540; --grass-bg: #133328;
+  }
+  * { box-sizing: border-box; }
+  html { scroll-padding-top: env(safe-area-inset-top, 0px); }
+  body {
+    margin: 0; background: var(--bg); color: var(--ink);
+    font-family: -apple-system, 'Segoe UI', Roboto, sans-serif;
+    -webkit-text-size-adjust: 100%;
+  }
+  .wrap { max-width: 480px; margin: 0 auto; padding: 20px 16px 40px; }
+  h1 { font-size: 1.2rem; margin: 4px 0 2px; }
+  .sub { color: var(--hint); font-size: 0.85rem; margin: 0 0 20px; }
+  .card {
+    background: var(--card); border: 1px solid var(--line); border-radius: 16px;
+    padding: 16px; margin-bottom: 16px;
+  }
+  .card h2 { font-size: 0.95rem; margin: 0 0 10px; }
+  label.field { display: block; font-size: 0.8rem; color: var(--hint); margin-bottom: 6px; }
+  input[type="text"] {
+    width: 100%; padding: 10px 12px; border: 2px solid var(--line); border-radius: 10px;
+    font-size: 1rem; background: var(--bg); color: var(--ink);
+  }
+  .chips { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+  .chip {
+    padding: 8px 14px; border-radius: 999px; border: 2px solid var(--line);
+    background: var(--bg); color: var(--ink); font-size: 0.95rem; cursor: pointer;
+    user-select: none; -webkit-tap-highlight-color: transparent;
+  }
+  .chip.key { border-color: var(--grass); background: var(--grass-bg); font-weight: 700; }
+  .row { display: flex; align-items: center; gap: 10px; margin-top: 14px; }
+  .row label.field { margin: 0; flex: 0 0 auto; width: 130px; }
+  input[type="range"] { flex: 1; }
+  .val { width: 42px; text-align: right; font-variant-numeric: tabular-nums; font-size: 0.9rem; }
+  button {
+    font-family: inherit; font-size: 1rem; font-weight: 700; border-radius: 14px;
+    border: none; padding: 14px; cursor: pointer; width: 100%;
+  }
+  .primary { background: var(--grass); color: white; }
+  .primary:disabled { opacity: 0.5; }
+  .ghost { background: transparent; border: 2px solid var(--line); color: var(--ink); margin-top: 8px; }
+  .status { text-align: center; font-size: 1.1rem; min-height: 1.4em; margin: 10px 0 4px; }
+  .heard { text-align: center; font-size: 0.95rem; color: var(--hint); margin-bottom: 10px; word-break: break-word; }
+  .scores { display: flex; gap: 10px; }
+  .score-box { flex: 1; border-radius: 12px; padding: 12px; text-align: center; border: 2px solid var(--line); }
+  .score-box.match { border-color: var(--ok); background: var(--grass-bg); }
+  .score-box.nomatch { border-color: var(--no); }
+  .score-box .pct { font-size: 1.5rem; font-weight: 800; }
+  .score-box .lbl { font-size: 0.75rem; color: var(--hint); }
+  .log { display: flex; flex-direction: column; gap: 8px; max-height: 260px; overflow-y: auto; }
+  .log-item { border-bottom: 1px solid var(--line); padding-bottom: 8px; font-size: 0.85rem; }
+  .log-item .lp { font-weight: 700; }
+  .log-item .lm { color: var(--hint); }
+  .badge { display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: 0.75rem; font-weight: 700; margin-left: 4px; }
+  .badge.ok { background: var(--grass-bg); color: var(--grass); }
+  .badge.no { background: #fbe4e2; color: var(--no); }
+  .typebox { display: flex; gap: 8px; margin-top: 10px; }
+  .typebox input { flex: 1; }
+  .typebox button { width: auto; padding: 10px 16px; }
+  .hint { font-size: 0.8rem; color: var(--hint); }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>🧪 Стенд распознавания речи</h1>
+  <p class="sub">Проверка: как взвешивание «главных» слов меняет результат по сравнению с обычным подсчётом.</p>
+
+  <div class="card">
+    <h2>1. Целевая фраза</h2>
+    <label class="field">Выбрать из списка</label>
+    <select id="preset">
+      <option value="">— выбрать фразу —</option>
+      <optgroup label="Простые (3 слова)">
+        <option>He is a boy.</option>
+        <option>It is a cat.</option>
+        <option>She is a girl.</option>
+      </optgroup>
+      <optgroup label="Средние (4–5 слов)">
+        <option>It is an apple.</option>
+        <option>They are big dogs.</option>
+        <option>He is a happy boy.</option>
+      </optgroup>
+      <optgroup label="Сложные (6+ слов)">
+        <option>They are three little elephants.</option>
+        <option>She is reading an interesting book.</option>
+        <option>The boxes are under the table.</option>
+      </optgroup>
+      <optgroup label="Сокращения">
+        <option>He's a good boy.</option>
+        <option>They're playing in the garden.</option>
+        <option>It's an old umbrella.</option>
+      </optgroup>
+    </select>
+    <label class="field" style="margin-top:14px;">Или напечатать свою</label>
+    <input type="text" id="phrase" value="He is a boy.">
+    <p class="hint" style="margin-top:10px;">Нажмите на слово, чтобы сделать его «главным» (весит больше).</p>
+    <div class="chips" id="chips"></div>
+  </div>
+
+  <div class="card">
+    <h2>2. Параметры</h2>
+    <div class="row">
+      <label class="field">Вес главных слов</label>
+      <input type="range" id="weight" min="1" max="5" step="0.5" value="2">
+      <span class="val" id="weightVal">2×</span>
+    </div>
+    <div class="row">
+      <label class="field">Порог совпадения</label>
+      <input type="range" id="threshold" min="10" max="100" step="5" value="50">
+      <span class="val" id="thresholdVal">50%</span>
+    </div>
+    <div class="row">
+      <label class="field">Порядок слов</label>
+      <input type="checkbox" id="ordered" style="width:22px;height:22px;flex:0 0 auto;">
+      <span class="hint" id="orderedHint">выкл — «мешок слов»</span>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>3. Проверка</h2>
+    <button class="primary" id="mic">🎤 Сказать фразу</button>
+    <div class="typebox">
+      <input type="text" id="typed" placeholder="Или впишите, что «услышано», для проверки без микрофона">
+      <button class="ghost" id="typedGo" style="margin-top:0;">Проверить</button>
+    </div>
+    <p class="status" id="status"></p>
+    <p class="heard" id="heard"></p>
+    <div class="scores" id="scores" style="display:none;">
+      <div class="score-box" id="oldBox">
+        <div class="pct" id="oldPct">—</div>
+        <div class="lbl">Обычный счёт<br>(все слова равны)</div>
+      </div>
+      <div class="score-box" id="newBox">
+        <div class="pct" id="newPct">—</div>
+        <div class="lbl">Взвешенный счёт<br>(главные весят больше)</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Журнал попыток</h2>
+    <div class="log" id="log"><p class="hint">Пока пусто — сделайте первую попытку.</p></div>
+  </div>
+</div>
+
+<script>
+const CONTRACTIONS = {
+  "i'm": "i am", "you're": "you are", "he's": "he is", "she's": "she is",
+  "it's": "it is", "we're": "we are", "they're": "they are",
+  "that's": "that is", "what's": "what is", "who's": "who is"
+};
+
+function normWords(s) {
+  let t = s.toLowerCase().replace(/[’‘]/g, "'");
+  t = t.replace(/\b[a-z]+'(?:m|s|re)\b/g, (m) => CONTRACTIONS[m] || m);
+  return t.replace(/[^a-z' ]/g, " ").split(/\s+/).filter(Boolean);
+}
+
+let phraseWords = [];   // [{word, key}]
+let heardHistory = [];
+
+const $ = (id) => document.getElementById(id);
+const phraseInput = $("phrase");
+const chipsEl = $("chips");
+const weightInput = $("weight");
+const thresholdInput = $("threshold");
+
+function rebuildChips() {
+  const words = normWords(phraseInput.value);
+  const prevKeys = new Set(phraseWords.filter((w) => w.key).map((w) => w.word));
+  phraseWords = words.map((w) => ({ word: w, key: prevKeys.has(w) }));
+  chipsEl.innerHTML = "";
+  phraseWords.forEach((w, i) => {
+    const chip = document.createElement("button");
+    chip.className = "chip" + (w.key ? " key" : "");
+    chip.textContent = w.word;
+    chip.onclick = () => { phraseWords[i].key = !phraseWords[i].key; rebuildChips(); };
+    chipsEl.appendChild(chip);
+  });
+}
+phraseInput.addEventListener("input", rebuildChips);
+rebuildChips();
+
+weightInput.addEventListener("input", () => { $("weightVal").textContent = weightInput.value + "×"; });
+thresholdInput.addEventListener("input", () => { $("thresholdVal").textContent = thresholdInput.value + "%"; });
+
+const orderedInput = $("ordered");
+orderedInput.addEventListener("change", () => {
+  $("orderedHint").textContent = orderedInput.checked
+    ? "вкл — слова должны идти по порядку"
+    : "выкл — «мешок слов»";
+});
+
+$("preset").addEventListener("change", (e) => {
+  if (!e.target.value) return;
+  phraseInput.value = e.target.value;
+  rebuildChips();
+});
+
+// "Мешок слов": совпадение не зависит от порядка.
+function bagScore(heard, weights) {
+  const heardSet = new Set(heard);
+  let hit = 0, total = 0;
+  phraseWords.forEach((pw, i) => {
+    total += weights[i];
+    if (heardSet.has(pw.word)) hit += weights[i];
+  });
+  return total ? hit / total : 0;
+}
+
+// С учётом порядка: наибольшая общая подпоследовательность (LCS) с весами.
+// Слово засчитывается, только если его можно сопоставить, не переставляя
+// ни целевые, ни услышанные слова местами.
+function orderedScore(heard, weights) {
+  const n = phraseWords.length, m = heard.length;
+  const dp = Array.from({ length: n + 1 }, () => new Array(m + 1).fill(0));
+  for (let i = 1; i <= n; i++) {
+    for (let j = 1; j <= m; j++) {
+      dp[i][j] = phraseWords[i - 1].word === heard[j - 1]
+        ? dp[i - 1][j - 1] + weights[i - 1]
+        : Math.max(dp[i - 1][j], dp[i][j - 1]);
+    }
+  }
+  const total = weights.reduce((a, b) => a + b, 0);
+  return total ? dp[n][m] / total : 0;
+}
+
+// Возвращает { oldScore, newScore } для одной услышанной строки.
+// old — все слова весят одинаково, new — с учётом отмеченных «главных» слов.
+// Оба считаются либо как мешок слов, либо с учётом порядка — в зависимости от переключателя.
+function scoreAgainst(heardText) {
+  const heard = normWords(heardText);
+  const w = parseFloat(weightInput.value);
+  const oldWeights = phraseWords.map(() => 1);
+  const newWeights = phraseWords.map((pw) => (pw.key ? w : 1));
+  const fn = orderedInput.checked ? orderedScore : bagScore;
+  return { oldScore: fn(heard, oldWeights), newScore: fn(heard, newWeights) };
+}
+
+function showResult(heardText, oldScore, newScore) {
+  const threshold = parseFloat(thresholdInput.value) / 100;
+  $("heard").textContent = heardText ? `Услышано: «${heardText}»` : "Ничего не услышано";
+  $("scores").style.display = "flex";
+
+  const oldMatch = oldScore >= threshold - 0.001;
+  const newMatch = newScore >= threshold - 0.001;
+
+  $("oldPct").textContent = Math.round(oldScore * 100) + "%";
+  $("newPct").textContent = Math.round(newScore * 100) + "%";
+  $("oldBox").className = "score-box " + (oldMatch ? "match" : "nomatch");
+  $("newBox").className = "score-box " + (newMatch ? "match" : "nomatch");
+
+  const differ = oldMatch !== newMatch;
+  $("status").textContent = differ ? "⚡ Результаты разошлись!" : (newMatch ? "✅ Совпадение" : "❌ Не совпало");
+
+  heardHistory.unshift({ phrase: phraseInput.value, heard: heardText, oldMatch, newMatch, oldScore, newScore });
+  heardHistory = heardHistory.slice(0, 20);
+  renderLog();
+}
+
+function renderLog() {
+  const log = $("log");
+  if (!heardHistory.length) { log.innerHTML = '<p class="hint">Пока пусто — сделайте первую попытку.</p>'; return; }
+  log.innerHTML = "";
+  heardHistory.forEach((h) => {
+    const div = document.createElement("div");
+    div.className = "log-item";
+    const badge = (m) => `<span class="badge ${m ? "ok" : "no"}">${m ? "match" : "no"}</span>`;
+    div.innerHTML = `<div class="lp">${h.phrase}</div>
+      <div class="lm">услышано: «${h.heard || "—"}»</div>
+      <div>обычный ${Math.round(h.oldScore * 100)}%${badge(h.oldMatch)} ·
+           взвеш. ${Math.round(h.newScore * 100)}%${badge(h.newMatch)}</div>`;
+    log.appendChild(div);
+  });
+}
+
+// ---------- Микрофон ----------
+const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+const micBtn = $("mic");
+
+if (!SR) {
+  micBtn.disabled = true;
+  micBtn.textContent = "🎤 Недоступно в этом браузере";
+}
+
+micBtn.onclick = () => {
+  if (!SR) return;
+  micBtn.disabled = true;
+  $("status").textContent = "🎤 Слушаю…";
+  $("heard").textContent = "";
+  $("scores").style.display = "none";
+  const rec = new SR();
+  rec.lang = "en-US";
+  rec.maxAlternatives = 5;
+  rec.interimResults = false;
+  let done = false;
+  const finish = () => { done = true; micBtn.disabled = false; };
+  rec.onresult = (e) => {
+    const alts = [...e.results[0]].map((a) => a.transcript);
+    let best = null, bestNew = -1;
+    alts.forEach((t) => {
+      const { oldScore, newScore } = scoreAgainst(t);
+      if (newScore > bestNew) { bestNew = newScore; best = { t, oldScore, newScore }; }
+    });
+    showResult(best.t, best.oldScore, best.newScore);
+    finish();
+  };
+  rec.onerror = (e) => {
+    $("status").textContent = e.error === "not-allowed" ? "🚫 Доступ к микрофону запрещён" : "⚠️ Ошибка распознавания";
+    finish();
+  };
+  rec.onend = () => { if (!done) { $("status").textContent = "🤷 Ничего не распознано"; finish(); } };
+  try { rec.start(); } catch { $("status").textContent = "⚠️ Не удалось запустить"; finish(); }
+};
+
+// ---------- Проверка без микрофона ----------
+$("typedGo").onclick = () => {
+  const text = $("typed").value.trim();
+  if (!text) return;
+  const { oldScore, newScore } = scoreAgainst(text);
+  showResult(text, oldScore, newScore);
+};
+</script>
+</body>
+</html>
