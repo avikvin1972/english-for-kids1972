@@ -1,0 +1,483 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Стенд: распознавание речи (универсальный)</title>
+<style>
+  :root {
+    --bg:#faf7f0; --card:#fff; --ink:#1f2d3a; --hint:#7b8a94;
+    --grass:#14b881; --grass-bg:#e8fbf5; --line:#d7e3ea; --ok:#14b881; --no:#e0574f;
+    box-sizing:border-box; padding-top:env(safe-area-inset-top,0px); padding-bottom:env(safe-area-inset-bottom,0px);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) { --bg:#14181d; --card:#1d232b; --ink:#eef2f5; --hint:#8fa0ab; --line:#2c3540; --grass-bg:#133328; }
+  }
+  :root[data-theme="dark"] { --bg:#14181d; --card:#1d232b; --ink:#eef2f5; --hint:#8fa0ab; --line:#2c3540; --grass-bg:#133328; }
+  * { box-sizing:border-box; }
+  html { scroll-padding-top:env(safe-area-inset-top,0px); }
+  body { margin:0; background:var(--bg); color:var(--ink); font-family:-apple-system,'Segoe UI',Roboto,sans-serif; }
+  .wrap { max-width:480px; margin:0 auto; padding:20px 16px 40px; }
+  h1 { font-size:1.2rem; margin:4px 0 2px; }
+  .sub { color:var(--hint); font-size:0.85rem; margin:0 0 20px; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:16px; padding:16px; margin-bottom:16px; }
+  .card h2 { font-size:0.95rem; margin:0 0 10px; }
+  label.field { display:block; font-size:0.8rem; color:var(--hint); margin-bottom:6px; }
+  input[type="text"], select { width:100%; padding:10px 12px; border:2px solid var(--line); border-radius:10px; font-size:1rem; background:var(--bg); color:var(--ink); }
+  .chips { display:flex; flex-wrap:wrap; gap:8px; margin-top:12px; }
+  .chip { padding:8px 14px; border-radius:999px; border:2px solid var(--line); background:var(--bg); color:var(--ink); font-size:0.95rem; cursor:pointer; user-select:none; -webkit-tap-highlight-color:transparent; }
+  .chip.key { border-color:var(--grass); background:var(--grass-bg); font-weight:700; }
+  .row { display:flex; align-items:center; gap:10px; margin-top:14px; }
+  .row label.field { margin:0; flex:0 0 auto; width:130px; }
+  input[type="range"] { flex:1; }
+  .val { width:42px; text-align:right; font-variant-numeric:tabular-nums; font-size:0.9rem; }
+  button { font-family:inherit; font-size:1rem; font-weight:700; border-radius:14px; border:none; padding:14px; cursor:pointer; width:100%; }
+  .primary { background:var(--grass); color:#fff; }
+  .primary:disabled { opacity:0.5; }
+  .ghost { background:transparent; border:2px solid var(--line); color:var(--ink); margin-top:8px; }
+  .status { text-align:center; font-size:1.1rem; min-height:1.4em; margin:10px 0 4px; }
+  .heard { text-align:center; font-size:0.95rem; color:var(--hint); margin-bottom:10px; word-break:break-word; }
+  .scores { display:flex; gap:10px; }
+  .score-box { flex:1; border-radius:12px; padding:12px; text-align:center; border:2px solid var(--line); }
+  .score-box.match { border-color:var(--ok); background:var(--grass-bg); }
+  .score-box.nomatch { border-color:var(--no); }
+  .score-box .pct { font-size:1.5rem; font-weight:800; }
+  .score-box .lbl { font-size:0.75rem; color:var(--hint); }
+  .log { display:flex; flex-direction:column; gap:8px; max-height:260px; overflow-y:auto; }
+  .log-item { border-bottom:1px solid var(--line); padding-bottom:8px; font-size:0.85rem; }
+  .log-item .lp { font-weight:700; }
+  .log-item .lm { color:var(--hint); }
+  .badge { display:inline-block; padding:2px 8px; border-radius:999px; font-size:0.75rem; font-weight:700; margin-left:4px; }
+  .badge.ok { background:var(--grass-bg); color:var(--grass); }
+  .badge.no { background:#fbe4e2; color:var(--no); }
+  .typebox { display:flex; gap:8px; margin-top:10px; }
+  .typebox input { flex:1; }
+  .typebox button { width:auto; padding:10px 16px; }
+  .hint { font-size:0.8rem; color:var(--hint); }
+  .raw { background:var(--bg); border:1px solid var(--line); border-radius:10px; padding:10px; font-size:0.78rem; white-space:pre-wrap; word-break:break-word; margin:0; font-family: 'SFMono-Regular', Consolas, monospace; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>🧪 Стенд распознавания речи</h1>
+  <p class="sub">Универсальный: любой язык, автоматический выбор — сравнивать по словам или по символам.</p>
+
+  <div class="card">
+    <h2>1. Язык (код BCP-47)</h2>
+    <label class="field">Выбрать из списка</label>
+    <select id="langPicker"><option value="">— выбрать язык —</option></select>
+    <label class="field" style="margin-top:14px;">Или вписать код вручную</label>
+    <input type="text" id="lang" value="en-US">
+    <p class="hint" id="langHint" style="margin-top:8px;"></p>
+  </div>
+
+  <div class="card">
+    <h2>2. Целевая фраза</h2>
+    <label class="field">Примеры (если есть для этого языка)</label>
+    <select id="preset"><option value="">— выбрать фразу —</option></select>
+    <label class="field" style="margin-top:14px;">Или напечатать свою</label>
+    <input type="text" id="phrase" value="He is a boy.">
+    <p class="hint" style="margin-top:10px;">Нажмите на слово/символ, чтобы сделать его «главным».</p>
+    <div class="chips" id="chips"></div>
+    <button class="ghost" id="listen" style="margin-top:14px;">🔊 Послушать</button>
+  </div>
+
+  <div class="card">
+    <h2>3. Параметры</h2>
+    <div class="row"><label class="field">Вес главных</label><input type="range" id="weight" min="1" max="5" step="0.5" value="2"><span class="val" id="weightVal">2×</span></div>
+    <div class="row"><label class="field">Порог совпадения</label><input type="range" id="threshold" min="10" max="100" step="5" value="50"><span class="val" id="thresholdVal">50%</span></div>
+    <div class="row"><label class="field">Порядок</label><input type="checkbox" id="ordered" style="width:22px;height:22px;flex:0 0 auto;"><span class="hint" id="orderedHint">выкл — «мешок»</span></div>
+  </div>
+
+  <div class="card">
+    <h2>4. Технические параметры распознавания</h2>
+    <div class="row"><label class="field">maxAlternatives</label><input type="range" id="maxAlt" min="1" max="10" step="1" value="5"><span class="val" id="maxAltVal">5</span></div>
+    <div class="row"><label class="field">interimResults</label><input type="checkbox" id="interim" style="width:22px;height:22px;flex:0 0 auto;"><span class="hint">черновики по ходу фразы</span></div>
+    <div class="row"><label class="field">continuous</label><input type="checkbox" id="continuous" style="width:22px;height:22px;flex:0 0 auto;"><span class="hint">не останавливаться после фразы</span></div>
+  </div>
+
+  <div class="card">
+    <h2>5. Проверка</h2>
+    <button class="primary" id="mic">🎤 Сказать фразу</button>
+    <button class="ghost" id="selftest">🧪 Проверить синтезом</button>
+    <div class="typebox">
+      <input type="text" id="typed" placeholder="Или впишите «услышанное» вручную">
+      <button class="ghost" id="typedGo" style="margin-top:0;">Проверить</button>
+    </div>
+    <p class="status" id="status"></p>
+    <p class="heard" id="heard"></p>
+    <div class="scores" id="scores" style="display:none;">
+      <div class="score-box" id="oldBox"><div class="pct" id="oldPct">—</div><div class="lbl">Обычный счёт</div></div>
+      <div class="score-box" id="newBox"><div class="pct" id="newPct">—</div><div class="lbl">Взвешенный счёт</div></div>
+    </div>
+    <p class="hint" style="margin-top:14px;">Сырой вывод SpeechRecognition (последний результат):</p>
+    <pre id="rawResults" class="raw">—</pre>
+    <p class="hint" style="margin-top:10px;">Черновики этой попытки (если включён interimResults):</p>
+    <div class="log" id="interimLog"><p class="hint">Пока пусто.</p></div>
+    <button class="ghost" id="copyInterim">📋 Скопировать черновики</button>
+  </div>
+
+  <div class="card">
+    <h2>6. Журнал попыток</h2>
+    <div class="log" id="log"><p class="hint">Пока пусто.</p></div>
+  </div>
+</div>
+
+<script>
+// ---------- Языки: код -> название (для клика в списке) ----------
+const LANGUAGES = [
+  ["en-US","English (US)"], ["en-GB","English (UK)"], ["ru-RU","Русский"],
+  ["es-ES","Español (España)"], ["es-MX","Español (México)"], ["fr-FR","Français"],
+  ["de-DE","Deutsch"], ["it-IT","Italiano"], ["pt-PT","Português (Portugal)"],
+  ["pt-BR","Português (Brasil)"], ["nl-NL","Nederlands"], ["pl-PL","Polski"],
+  ["sv-SE","Svenska"], ["nb-NO","Norsk"], ["da-DK","Dansk"], ["fi-FI","Suomi"],
+  ["cs-CZ","Čeština"], ["sk-SK","Slovenčina"], ["hu-HU","Magyar"], ["ro-RO","Română"],
+  ["bg-BG","Български"], ["uk-UA","Українська"], ["el-GR","Ελληνικά"],
+  ["tr-TR","Türkçe"], ["he-IL","עברית"], ["ar-SA","العربية"], ["fa-IR","فارسی"],
+  ["ur-PK","اردو"], ["hi-IN","हिन्दी"], ["bn-BD","বাংলা"], ["ta-IN","தமிழ்"],
+  ["te-IN","తెలుగు"], ["ml-IN","മലയാളം"], ["mr-IN","मराठी"], ["gu-IN","ગુજરાતી"],
+  ["kn-IN","ಕನ್ನಡ"], ["pa-IN","ਪੰਜਾਬੀ"], ["ne-NP","नेपाली"], ["si-LK","සිංහල"],
+  ["th-TH","ไทย"], ["vi-VN","Tiếng Việt"], ["id-ID","Bahasa Indonesia"],
+  ["ms-MY","Bahasa Melayu"], ["ja-JP","日本語"], ["ko-KR","한국어"],
+  ["zh-CN","中文（简体）"], ["zh-TW","中文（繁體）"], ["km-KH","ខ្មែរ"],
+  ["lo-LA","ລາວ"], ["my-MM","မြန်မာ"], ["ka-GE","ქართული"], ["hy-AM","Հայերեն"],
+  ["az-AZ","Azərbaycan"], ["uz-UZ","Oʻzbek"], ["sw-KE","Kiswahili"], ["am-ET","አማርኛ"],
+  ["hr-HR","Hrvatski"], ["sr-RS","Српски"], ["lt-LT","Lietuvių"], ["lv-LV","Latviešu"],
+  ["et-EE","Eesti"]
+];
+
+// Языки, где слова пишутся без пробелов — сравнение идёт по символам, а не по словам.
+const NO_SPACE = new Set(["zh","ja","th","km","lo","my"]);
+const langBase = (code) => code.split("-")[0].toLowerCase();
+const isNoSpace = (code) => NO_SPACE.has(langBase(code));
+
+// Сокращения раскрываются только для английского.
+const CONTRACTIONS = {
+  "i'm":"i am","you're":"you are","he's":"he is","she's":"she is","it's":"it is",
+  "we're":"we are","they're":"they are","that's":"that is","what's":"what is","who's":"who is"
+};
+
+// Готовые фразы — по 5 штук там, где есть; для остальных языков список пуст.
+const PRESETS = {
+  "en-US": ["He is a boy.","She is a happy girl.","They are big dogs.","It is an old red car.","The boxes are under the table."],
+  "ru-RU": ["Это кот.","Она читает книгу.","Они большие собаки.","Это старый красный дом.","Коробки стоят под столом."],
+  "es-ES": ["Es un gato.","Ella lee un libro.","Son perros grandes.","Es una casa vieja.","Las cajas están bajo la mesa."],
+  "fr-FR": ["C'est un chat.","Elle lit un livre.","Ce sont de grands chiens.","C'est une vieille maison.","Les boîtes sont sous la table."],
+  "de-DE": ["Das ist eine Katze.","Sie liest ein Buch.","Das sind große Hunde.","Das ist ein altes Haus.","Die Kisten stehen unter dem Tisch."],
+  "ja-JP": ["これは猫です。","彼女は本を読みます。","それらは大きな犬です。","これは古い赤い車です。","箱はテーブルの下にあります。"],
+  "zh-CN": ["这是一只猫。","她在读书。","它们是大狗。","这是一辆旧红车。","箱子在桌子下面。"],
+  "ar-SA": ["هذا قط.","هي تقرأ كتابا.","هذه كلاب كبيرة.","هذا منزل قديم.","الصناديق تحت الطاولة."],
+  "hi-IN": ["यह एक बिल्ली है।","वह एक किताब पढ़ती है।","वे बड़े कुत्ते हैं।","यह एक पुराना घर है।","डिब्बे मेज़ के नीचे हैं।"],
+  "ko-KR": ["이것은 고양이입니다.","그녀는 책을 읽습니다.","그것들은 큰 개입니다.","이것은 오래된 빨간 차입니다.","상자들이 탁자 아래에 있습니다."],
+  "it-IT": ["È un gatto.","Lei legge un libro.","Sono cani grandi.","È una casa vecchia.","Le scatole sono sotto il tavolo."],
+  "pt-PT": ["É um gato.","Ela lê um livro.","São cães grandes.","É uma casa velha.","As caixas estão debaixo da mesa."],
+  "tr-TR": ["Bu bir kedi.","O bir kitap okuyor.","Onlar büyük köpekler.","Bu eski bir ev.","Kutular masanın altında."],
+  "vi-VN": ["Đây là một con mèo.","Cô ấy đang đọc sách.","Chúng là những con chó lớn.","Đây là một ngôi nhà cũ.","Những chiếc hộp ở dưới bàn."],
+  "th-TH": ["นี่คือแมว","เธอกำลังอ่านหนังสือ","พวกมันเป็นสุนัขตัวใหญ่","นี่คือบ้านเก่า","กล่องอยู่ใต้โต๊ะ"]
+};
+
+function normUnits(s, lang) {
+  let t = s.toLowerCase().replace(/[’‘]/g, "'");
+  if (langBase(lang) === "en") t = t.replace(/\b[a-z]+'(?:m|s|re)\b/g, (m) => CONTRACTIONS[m] || m);
+  t = t.replace(/[^\p{L}\p{M}'\s]/gu, " ");
+  if (isNoSpace(lang)) return Array.from(t.replace(/\s+/g, ""));
+  return t.split(/\s+/).filter(Boolean);
+}
+
+let unitList = [];   // [{word, key}]
+let heardHistory = [];
+const $ = (id) => document.getElementById(id);
+const langInput = $("lang"), langPicker = $("langPicker"), presetSelect = $("preset"), phraseInput = $("phrase"), chipsEl = $("chips");
+const weightInput = $("weight"), thresholdInput = $("threshold"), orderedInput = $("ordered");
+
+langPicker.innerHTML += LANGUAGES.map(([c, n]) => `<option value="${c}">${n} — ${c}</option>`).join("");
+langPicker.addEventListener("change", () => { if (langPicker.value) { langInput.value = langPicker.value; onLangChange(); } });
+
+function rebuildPresets() {
+  const list = PRESETS[langInput.value] || [];
+  presetSelect.innerHTML = '<option value="">— выбрать фразу —</option>' +
+    list.map((p) => `<option>${p}</option>`).join("");
+}
+
+function rebuildChips() {
+  const units = normUnits(phraseInput.value, langInput.value);
+  const prevKeys = new Set(unitList.filter((u) => u.key).map((u) => u.word));
+  unitList = units.map((u) => ({ word: u, key: prevKeys.has(u) }));
+  chipsEl.innerHTML = "";
+  unitList.forEach((u, i) => {
+    const chip = document.createElement("button");
+    chip.className = "chip" + (u.key ? " key" : "");
+    chip.textContent = u.word;
+    chip.onclick = () => { unitList[i].key = !unitList[i].key; rebuildChips(); };
+    chipsEl.appendChild(chip);
+  });
+}
+
+function onLangChange() {
+  const known = LANGUAGES.find(([c]) => c === langInput.value);
+  const mode = isNoSpace(langInput.value) ? "по символам" : "по словам";
+  $("langHint").textContent = known
+    ? `${known[1]} — сравнение ${mode}.`
+    : `Код не из списка — распознавание может не поддерживаться. Сравнение ${mode}.`;
+  rebuildPresets();
+  if (PRESETS[langInput.value]) phraseInput.value = PRESETS[langInput.value][0];
+  rebuildChips();
+}
+langInput.addEventListener("change", onLangChange);
+langInput.addEventListener("input", onLangChange);
+presetSelect.addEventListener("change", (e) => { if (e.target.value) { phraseInput.value = e.target.value; rebuildChips(); } });
+phraseInput.addEventListener("input", rebuildChips);
+onLangChange();
+
+weightInput.addEventListener("input", () => { $("weightVal").textContent = weightInput.value + "×"; });
+thresholdInput.addEventListener("input", () => { $("thresholdVal").textContent = thresholdInput.value + "%"; });
+orderedInput.addEventListener("change", () => { $("orderedHint").textContent = orderedInput.checked ? "вкл — по порядку" : "выкл — «мешок»"; });
+
+const maxAltInput = $("maxAlt"), interimInput = $("interim"), continuousInput = $("continuous");
+maxAltInput.addEventListener("input", () => { $("maxAltVal").textContent = maxAltInput.value; });
+
+let interimLog = [];
+function resetInterimLog() {
+  interimLog = [];
+  $("interimLog").innerHTML = '<p class="hint">Пока пусто.</p>';
+}
+function pushInterim(text, idx) {
+  const t = new Date();
+  const stamp = t.toLocaleTimeString("ru-RU", { hour12: false }) + "." + String(t.getMilliseconds()).padStart(3, "0");
+  interimLog.push(`[${stamp}] (results[${idx}]) «${text}»`);
+  const box = $("interimLog");
+  box.innerHTML = interimLog.map((line) => `<div class="log-item">${line}</div>`).join("");
+  box.scrollTop = box.scrollHeight;
+}
+$("copyInterim").onclick = async () => {
+  const text = interimLog.join("\n") || "(черновиков пока нет)";
+  try {
+    await navigator.clipboard.writeText(text);
+  } catch {
+    const ta = document.createElement("textarea");
+    ta.value = text; ta.style.position = "fixed"; ta.style.opacity = "0";
+    document.body.appendChild(ta); ta.select();
+    try { document.execCommand("copy"); } catch {}
+    document.body.removeChild(ta);
+  }
+  const btn = $("copyInterim");
+  const old = btn.textContent;
+  btn.textContent = "✅ Скопировано";
+  setTimeout(() => { btn.textContent = old; }, 1500);
+};
+
+function showRaw(result) {
+  const lines = [...result].map((alt, i) =>
+    `[${i}] transcript: "${alt.transcript}"  confidence: ${alt.confidence.toFixed(3)}`
+  );
+  lines.push(`isFinal: ${result.isFinal}`);
+  $("rawResults").textContent = lines.join("\n");
+}
+
+function bagScore(heard, weights) {
+  const set = new Set(heard);
+  let hit = 0, total = 0;
+  unitList.forEach((u, i) => { total += weights[i]; if (set.has(u.word)) hit += weights[i]; });
+  return total ? hit / total : 0;
+}
+function orderedScore(heard, weights) {
+  const n = unitList.length, m = heard.length;
+  const dp = Array.from({ length: n + 1 }, () => new Array(m + 1).fill(0));
+  for (let i = 1; i <= n; i++) for (let j = 1; j <= m; j++) {
+    dp[i][j] = unitList[i - 1].word === heard[j - 1] ? dp[i - 1][j - 1] + weights[i - 1] : Math.max(dp[i - 1][j], dp[i][j - 1]);
+  }
+  const total = weights.reduce((a, b) => a + b, 0);
+  return total ? dp[n][m] / total : 0;
+}
+function scoreAgainst(heardText) {
+  const heard = normUnits(heardText, langInput.value);
+  const w = parseFloat(weightInput.value);
+  const oldW = unitList.map(() => 1), newW = unitList.map((u) => (u.key ? w : 1));
+  const fn = orderedInput.checked ? orderedScore : bagScore;
+  return { oldScore: fn(heard, oldW), newScore: fn(heard, newW) };
+}
+
+function showResult(heardText, oldScore, newScore, auto = false) {
+  const threshold = parseFloat(thresholdInput.value) / 100;
+  $("heard").textContent = heardText ? `Услышано: «${heardText}»` : "Ничего не услышано";
+  $("scores").style.display = "flex";
+  const oldMatch = oldScore >= threshold - 0.001, newMatch = newScore >= threshold - 0.001;
+  $("oldPct").textContent = Math.round(oldScore * 100) + "%";
+  $("newPct").textContent = Math.round(newScore * 100) + "%";
+  $("oldBox").className = "score-box " + (oldMatch ? "match" : "nomatch");
+  $("newBox").className = "score-box " + (newMatch ? "match" : "nomatch");
+  const prefix = auto ? "🧪 Автотест: " : "";
+  $("status").textContent = prefix + (oldMatch !== newMatch ? "⚡ Результаты разошлись!" : (newMatch ? "✅ Совпадение" : "❌ Не совпало"));
+  heardHistory.unshift({ lang: langInput.value, phrase: phraseInput.value, heard: heardText, oldMatch, newMatch, oldScore, newScore, auto });
+  heardHistory = heardHistory.slice(0, 20);
+  renderLog();
+}
+function renderLog() {
+  const log = $("log");
+  if (!heardHistory.length) { log.innerHTML = '<p class="hint">Пока пусто.</p>'; return; }
+  log.innerHTML = "";
+  heardHistory.forEach((h) => {
+    const div = document.createElement("div");
+    div.className = "log-item";
+    const b = (m) => `<span class="badge ${m ? "ok" : "no"}">${m ? "match" : "no"}</span>`;
+    const tag = h.auto ? '<span class="badge no" style="background:var(--grass-bg);color:var(--grass);">автотест</span> ' : "";
+    div.innerHTML = `<div class="lp">${tag}[${h.lang}] ${h.phrase}</div><div class="lm">услышано: «${h.heard || "—"}»</div>
+      <div>обычный ${Math.round(h.oldScore * 100)}%${b(h.oldMatch)} · взвеш. ${Math.round(h.newScore * 100)}%${b(h.newMatch)}</div>`;
+    log.appendChild(div);
+  });
+}
+
+// ---------- Синтез речи ----------
+function pickVoice(lang) {
+  const voices = speechSynthesis.getVoices();
+  return voices.find((v) => v.lang === lang)
+      || voices.find((v) => v.lang && v.lang.toLowerCase().startsWith(langBase(lang)))
+      || null;
+}
+function speakPhrase(text, lang) {
+  return new Promise((resolve) => {
+    if (!("speechSynthesis" in window)) return resolve(false);
+    const u = new SpeechSynthesisUtterance(text);
+    u.lang = lang;
+    const v = pickVoice(lang);
+    if (v) u.voice = v;
+    u.onend = () => resolve(true);
+    u.onerror = () => resolve(false);
+    speechSynthesis.cancel();
+    speechSynthesis.speak(u);
+  });
+}
+
+// ---------- Микрофон ----------
+const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+const micBtn = $("mic");
+const listenBtn = $("listen");
+const selftestBtn = $("selftest");
+if (!SR) {
+  micBtn.disabled = true; micBtn.textContent = "🎤 Недоступно в этом браузере";
+  selftestBtn.disabled = true;
+}
+listenBtn.onclick = () => speakPhrase(phraseInput.value, langInput.value);
+
+function errorMessage(code) {
+  switch (code) {
+    case "not-allowed": case "service-not-allowed": return "🚫 Доступ к микрофону запрещён.";
+    case "no-speech": return "🤷 Речь не обнаружена, попробуйте ещё раз.";
+    case "network": return "⚠️ Проблема с сетью или сервисом распознавания.";
+    case "audio-capture": return "🎙️ Микрофон не найден.";
+    case "language-not-supported": return "🌐 Этот язык не поддерживается распознаванием на этом устройстве.";
+    case "aborted": return "⏹️ Запись прервана.";
+    default: return `⚠️ Ошибка распознавания (${code}).`;
+  }
+}
+
+let activeRec = null;
+
+micBtn.onclick = () => {
+  if (!SR) return;
+
+  // Continuous-режим: повторное нажатие останавливает текущую сессию.
+  if (activeRec) { activeRec.stop(); return; }
+
+  listenBtn.disabled = true;   // по умолчанию озвучка заблокирована во время записи
+  selftestBtn.disabled = true;
+  resetInterimLog();
+  $("rawResults").textContent = "—";
+  $("status").textContent = "🎤 Слушаю…";
+  $("heard").textContent = "";
+  $("scores").style.display = "none";
+
+  const rec = new SR();
+  rec.lang = langInput.value;
+  rec.maxAlternatives = parseInt(maxAltInput.value, 10);
+  rec.interimResults = interimInput.checked;
+  rec.continuous = continuousInput.checked;
+
+  let gotResult = false;
+  const finish = () => {
+    activeRec = null;
+    micBtn.disabled = false; micBtn.textContent = "🎤 Сказать фразу";
+    listenBtn.disabled = false; selftestBtn.disabled = false;
+  };
+
+  if (rec.continuous) { activeRec = rec; micBtn.textContent = "⏹ Остановить"; }
+  else { micBtn.disabled = true; }
+
+  rec.onresult = (e) => {
+    // Разбираем results по спецификации: resultIndex — с какого индекса пришли новые данные в этом событии.
+    for (let i = e.resultIndex; i < e.results.length; i++) {
+      const result = e.results[i];
+      showRaw(result);
+      if (result.isFinal) {
+        gotResult = true;
+        const alts = [...result].map((a) => a.transcript);
+        let best = null, bestNew = -1;
+        alts.forEach((t) => { const { oldScore, newScore } = scoreAgainst(t); if (newScore > bestNew) { bestNew = newScore; best = { t, oldScore, newScore }; } });
+        showResult(best.t, best.oldScore, best.newScore);
+      } else {
+        pushInterim(result[0].transcript, i);
+      }
+    }
+  };
+  rec.onerror = (e) => { $("status").textContent = errorMessage(e.error); finish(); };
+  rec.onend = () => {
+    if (!gotResult) $("status").textContent = "🤷 Результата нет — возможно, этот язык не поддерживается на устройстве.";
+    finish();
+  };
+  try { rec.start(); } catch { $("status").textContent = "⚠️ Не удалось запустить распознавание."; finish(); }
+};
+
+$("typedGo").onclick = () => {
+  const text = $("typed").value.trim();
+  if (!text) return;
+  const { oldScore, newScore } = scoreAgainst(text);
+  showResult(text, oldScore, newScore);
+};
+
+// ---------- Автотест: микрофон слушает синтезированную фразу ----------
+selftestBtn.onclick = () => {
+  if (!SR) return;
+  micBtn.disabled = true; listenBtn.disabled = true; selftestBtn.disabled = true;
+  resetInterimLog();
+  $("rawResults").textContent = "—";
+  $("status").textContent = "🧪 Автотест: запускаю микрофон…";
+  $("heard").textContent = "";
+  $("scores").style.display = "none";
+  const rec = new SR();
+  rec.lang = langInput.value;
+  rec.maxAlternatives = parseInt(maxAltInput.value, 10);
+  rec.interimResults = interimInput.checked;
+  // continuous в автотесте не используется: нужна ровно одна фраза туда-обратно.
+  let gotResult = false, done = false;
+  const finish = () => { done = true; micBtn.disabled = false; listenBtn.disabled = false; selftestBtn.disabled = false; };
+  rec.onresult = (e) => {
+    for (let i = e.resultIndex; i < e.results.length; i++) {
+      const result = e.results[i];
+      showRaw(result);
+      if (result.isFinal) {
+        gotResult = true;
+        const alts = [...result].map((a) => a.transcript);
+        let best = null, bestNew = -1;
+        alts.forEach((t) => { const { oldScore, newScore } = scoreAgainst(t); if (newScore > bestNew) { bestNew = newScore; best = { t, oldScore, newScore }; } });
+        showResult(best.t, best.oldScore, best.newScore, true);
+      } else {
+        pushInterim(result[0].transcript, i);
+      }
+    }
+    if (gotResult) finish();
+  };
+  rec.onerror = (e) => { $("status").textContent = "🧪 Автотест: " + errorMessage(e.error); finish(); };
+  rec.onend = () => {
+    if (!done && !gotResult) { $("status").textContent = "🧪 Автотест: результата нет."; finish(); }
+  };
+  // Микрофон стартует первым: озвучиваем фразу только после подтверждения,
+  // что запись реально началась (событие onstart), а не сразу.
+  rec.onstart = () => {
+    $("status").textContent = "🧪 Автотест: говорю фразу…";
+    speakPhrase(phraseInput.value, langInput.value);
+  };
+  try { rec.start(); } catch { $("status").textContent = "⚠️ Не удалось запустить автотест."; finish(); }
+};
+</script>
+</body>
+</html>
