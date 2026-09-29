@@ -63,8 +63,10 @@
 
   <div class="card">
     <h2>1. Язык (код BCP-47)</h2>
-    <input type="text" id="lang" list="langList" value="en-US">
-    <datalist id="langList"></datalist>
+    <label class="field">Выбрать из списка</label>
+    <select id="langPicker"><option value="">— выбрать язык —</option></select>
+    <label class="field" style="margin-top:14px;">Или вписать код вручную</label>
+    <input type="text" id="lang" value="en-US">
     <p class="hint" id="langHint" style="margin-top:8px;"></p>
   </div>
 
@@ -170,10 +172,11 @@ function normUnits(s, lang) {
 let unitList = [];   // [{word, key}]
 let heardHistory = [];
 const $ = (id) => document.getElementById(id);
-const langInput = $("lang"), presetSelect = $("preset"), phraseInput = $("phrase"), chipsEl = $("chips");
+const langInput = $("lang"), langPicker = $("langPicker"), presetSelect = $("preset"), phraseInput = $("phrase"), chipsEl = $("chips");
 const weightInput = $("weight"), thresholdInput = $("threshold"), orderedInput = $("ordered");
 
-$("langList").innerHTML = LANGUAGES.map(([c, n]) => `<option value="${c}" label="${n}">`).join("");
+langPicker.innerHTML += LANGUAGES.map(([c, n]) => `<option value="${c}">${n} — ${c}</option>`).join("");
+langPicker.addEventListener("change", () => { if (langPicker.value) { langInput.value = langPicker.value; onLangChange(); } });
 
 function rebuildPresets() {
   const list = PRESETS[langInput.value] || [];
