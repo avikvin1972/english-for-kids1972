@@ -1,0 +1,405 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Урок 1+ — a / an, plurals</title>
+<link rel="stylesheet" href="../../shared/styles.css">
+<style>
+  .gear { background: none; border: none; color: white; font-size: 1.4rem; cursor: pointer; }
+  .opt { width: 100%; text-align: left; font-family: 'Nunito', sans-serif; font-size: 1.05rem; font-weight: 700;
+         padding: 14px 16px; border: 3px solid #d7e3ea; border-radius: 18px; background: white; color: var(--ink); cursor: pointer; }
+  .opt.selected { border-color: var(--grass); background: #e8fbf5; }
+  .opt:disabled { opacity: 0.5; cursor: not-allowed; }
+  .opts { display: flex; flex-direction: column; gap: 12px; width: 100%; }
+  .row { display: flex; gap: 12px; flex-wrap: wrap; justify-content: center; }
+  .pill { font-family: 'Nunito', sans-serif; font-size: 1rem; font-weight: 700; padding: 10px 16px;
+          border: 3px solid #d7e3ea; border-radius: 14px; background: white; color: var(--ink); cursor: pointer; }
+  .pill.selected { border-color: var(--grass); background: #e8fbf5; }
+  .heard { font-size: 0.9rem; color: #7b8a94; margin-top: 6px; }
+  u.first { text-decoration-color: #ffb703; text-decoration-thickness: 4px; text-underline-offset: 4px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="topbar">
+    <span id="lesson-label">🌻 Урок 1+</span>
+    <span>
+      <button class="gear" id="gear" aria-label="Настройки">⚙️</button>
+    </span>
+  </div>
+  <div class="card" id="app">
+    <p class="hint">Загрузка…</p>
+  </div>
+</div>
+
+<script type="module">
+import { ready, saveProgress, speak, speakWait, randomFeedback, PHRASES,
+         getSpeakMode, setSpeakMode, recognitionSupported, listenOnce,
+         ACCURACY_LEVELS, getAccuracy, setAccuracy,
+         TRIES_OPTIONS, getMaxTries, setMaxTries } from "../../shared/engine.js?v=5";
+import { partMeta, introScreens, noticeItems, rememberItems, stories,
+         makeQuiz, makeSay } from "./data.js?v=1";
+
+const app = document.getElementById("app");
+const label = document.getElementById("lesson-label");
+
+let partIndex = 0;
+let quiz = [];
+let quizIndex = 0;
+let correctCount = 0;
+let spokenCount = 0;
+let sayItems = [];
+let speakMode = getSpeakMode() || (recognitionSupported() ? "auto" : "self");
+let accuracy = getAccuracy();
+let maxTries = getMaxTries();
+
+const pause = (ms) => new Promise((r) => setTimeout(r, ms));
+
+function clear() { app.innerHTML = ""; }
+
+function el(tag, cls, html) {
+  const e = document.createElement(tag);
+  if (cls) e.className = cls;
+  if (html !== undefined) e.innerHTML = html;
+  return e;
+}
+
+// Предложение с пропуском из данных задания
+function blankSentence(item) {
+  return item.html.replace("{blank}", `<span class="blank" id="blank">${item.blank || "___"}</span>`);
+}
+
+// Предложение с подсвеченной частью
+function hlSentence(s, withId) {
+  const mid = s.hl ? `<span class="highlight"${withId ? ' id="hl"' : ""}>${s.hl}</span>` : "";
+  return `${s.pre}${mid}${s.post}`;
+}
+
+// ---------- Настройки (для взрослого) ----------
+function renderSettings(onStart) {
+  clear();
+  label.textContent = "🌻 Урок 1+";
+  const supported = recognitionSupported();
+  let chosen = speakMode === "auto" && !supported ? "self" : speakMode;
+  let acc = accuracy;
+  let tries = maxTries;
+
+  app.appendChild(el("h2", "headline", "Настройки"));
+  app.appendChild(el("p", "hint", "Как ребёнок будет произносить фразы?"));
+
+  const opts = el("div", "opts");
+  const auto = el("button", "opt", "🎤 Проверять голос<br><span class='hint'>Приложение слушает и проверяет. Chrome отправляет запись голоса в Google для распознавания, мы её не сохраняем.</span>");
+  const self = el("button", "opt", "✋ Ребёнок сам нажимает «Я сказал»<br><span class='hint'>Без микрофона, без проверки.</span>");
+  if (!supported) {
+    auto.disabled = true;
+    auto.innerHTML += "<br><span class='hint'>Не работает в этом браузере (нужен Chrome или Edge).</span>";
+  }
+  opts.appendChild(auto);
+  opts.appendChild(self);
+  app.appendChild(opts);
+
+  const extra = el("div", "opts");
+  extra.style.marginTop = "18px";
+
+  extra.appendChild(el("p", "hint", "Точность распознавания голоса"));
+  const accRow = el("div", "row");
+  const accHint = el("p", "hint", "");
+  const accBtns = Object.entries(ACCURACY_LEVELS).map(([key, lvl]) => {
+    const b = el("button", "pill", lvl.label);
+    b.onclick = () => { acc = key; paint(); };
+    accRow.appendChild(b);
+    return [key, b];
+  });
+  extra.appendChild(accRow);
+  extra.appendChild(accHint);
+
+  extra.appendChild(el("p", "hint", "Сколько попыток у ребёнка, прежде чем приложение скажет фразу само"));
+  const triesRow = el("div", "row");
+  const triesBtns = TRIES_OPTIONS.map((n) => {
+    const b = el("button", "pill", String(n));
+    b.onclick = () => { tries = n; paint(); };
+    triesRow.appendChild(b);
+    return [n, b];
+  });
+  extra.appendChild(triesRow);
+  app.appendChild(extra);
+
+  function paint() {
+    auto.classList.toggle("selected", chosen === "auto");
+    self.classList.toggle("selected", chosen === "self");
+    accBtns.forEach(([k, b]) => b.classList.toggle("selected", k === acc));
+    accHint.textContent = ACCURACY_LEVELS[acc].hint;
+    triesBtns.forEach(([n, b]) => b.classList.toggle("selected", n === tries));
+    extra.style.display = chosen === "auto" ? "flex" : "none";
+  }
+  auto.onclick = () => { chosen = "auto"; paint(); };
+  self.onclick = () => { chosen = "self"; paint(); };
+  paint();
+
+  const start = el("button", "primary", "Начать");
+  start.onclick = () => {
+    speakMode = chosen;
+    accuracy = acc;
+    maxTries = tries;
+    setSpeakMode(chosen);
+    setAccuracy(acc);
+    setMaxTries(tries);
+    onStart();
+  };
+  app.appendChild(start);
+}
+
+// ---------- Начало части ----------
+function startPart(p) {
+  partIndex = p;
+  const m = partMeta[p];
+  label.textContent = `🌻 Урок 1+ · ${m.letter} · ${m.label}`;
+  renderIntro(0);
+}
+
+// ---------- ПОНЯТЬ ----------
+function renderIntro(i) {
+  clear();
+  const screens = introScreens[partIndex];
+  if (i >= screens.length) return renderNotice(0);
+  const s = screens[i];
+  app.appendChild(el("div", "emoji-big", s.image));
+  app.appendChild(el("p", "sentence", hlSentence(s, false)));
+  const next = el("button", "primary", "Дальше");
+  next.onclick = () => renderIntro(i + 1);
+  app.appendChild(next);
+  speak(s.text);
+}
+
+// ---------- ЗАМЕТИТЬ ----------
+function renderNotice(i) {
+  clear();
+  const items = noticeItems[partIndex];
+  if (i >= items.length) return renderRemember();
+  const item = items[i];
+  app.appendChild(el("div", "emoji-big", item.image));
+  const p = el("p", "sentence", hlSentence(item, true));
+  app.appendChild(p);
+  app.appendChild(el("p", "hint", PHRASES.tapWord));
+  speak(item.text);
+  speak(PHRASES.tapWord, null, { queue: true });
+  p.querySelector("#hl").onclick = () => renderNotice(i + 1);
+}
+
+// ---------- ВСПОМНИТЬ (без оценки) ----------
+function renderRemember() {
+  clear();
+  const item = rememberItems[partIndex];
+  app.appendChild(el("div", "emoji-big", item.image));
+  app.appendChild(el("p", "sentence", blankSentence(item)));
+  const choices = el("div", "choices");
+  item.choices.forEach((word) => {
+    const b = el("button", "choice", word);
+    b.onclick = async () => {
+      [...choices.children].forEach((c) => (c.disabled = true));
+      document.getElementById("blank").textContent = item.correct;
+      b.classList.add(word === item.correct ? "correct" : "wrong");
+      await speakWait(item.full);
+      await pause(300);
+      startQuiz();
+    };
+    choices.appendChild(b);
+  });
+  app.appendChild(choices);
+  app.appendChild(el("p", "hint", PHRASES.whichWord));
+  speak(item.ask);
+  speak(PHRASES.whichWord, null, { queue: true });
+}
+
+// ---------- Оцениваемый выбор ----------
+function startQuiz() {
+  quiz = makeQuiz(partIndex);
+  sayItems = makeSay(partIndex);
+  quizIndex = 0;
+  correctCount = 0;
+  spokenCount = 0;
+  renderQuizItem();
+}
+
+function renderQuizItem() {
+  clear();
+  if (quizIndex >= quiz.length) return renderSay(0);
+  const item = quiz[quizIndex];
+  app.appendChild(el("div", "emoji-big", item.image));
+  app.appendChild(el("p", "sentence", blankSentence(item)));
+  const choices = el("div", "choices");
+  const feedback = el("p", "feedback");
+  const state = { attempts: 0, locked: false };
+  item.choices.forEach((word) => {
+    const b = el("button", "choice", word);
+    b.onclick = () => handleAnswer(word, item, b, choices, feedback, state);
+    choices.appendChild(b);
+  });
+  app.appendChild(choices);
+  app.appendChild(feedback);
+  speak(item.ask);
+}
+
+// ---------- ОБРАТНАЯ СВЯЗЬ ----------
+async function handleAnswer(word, item, btn, choices, feedback, state) {
+  if (state.locked) return;
+  state.locked = true;
+  const buttons = [...choices.children];
+  const blank = document.getElementById("blank");
+
+  if (word === item.correct) {
+    // В звёзды идёт только ответ с первой попытки
+    if (state.attempts === 0) correctCount++;
+    buttons.forEach((c) => (c.disabled = true));
+    btn.classList.add("correct");
+    blank.textContent = word;
+    const fb = randomFeedback("correct");
+    feedback.textContent = fb.text;
+    feedback.className = "feedback ok";
+    await speakWait(`${item.full} ${fb.text}`);
+    await pause(300);
+    quizIndex++;
+    renderQuizItem();
+    return;
+  }
+
+  // Неверно: даём попробовать ещё раз
+  state.attempts++;
+  buttons.forEach((c) => (c.disabled = true));
+  btn.classList.add("wrong");
+  const fb = randomFeedback("tryAgain");
+  feedback.textContent = fb.text;
+  feedback.className = "feedback no";
+  await speakWait(fb.text, fb.audioFileId);
+
+  // Вариантов два: после первой ошибки остаётся правильный, подсвечиваем его
+  const rightBtn = buttons.find((c) => c.textContent === item.correct);
+  rightBtn.classList.add("correct");
+  rightBtn.disabled = false;
+  feedback.textContent = PHRASES.tapWord;
+  feedback.className = "feedback";
+  speak(item.full);
+  speak(PHRASES.tapWord, null, { queue: true });
+  state.locked = false;
+}
+
+// ---------- СКАЗАТЬ вслух ----------
+function renderSay(i, attempts = 0, lastHeard = null) {
+  clear();
+  if (i >= sayItems.length) return renderStory();
+  const q = sayItems[i];
+  const text = q.text;
+  const next = () => renderSay(i + 1);
+
+  app.appendChild(el("p", "hint", PHRASES.sayIt));
+  app.appendChild(el("div", "emoji-big", q.image));
+  app.appendChild(el("p", "sentence", text));
+  const feedback = el("p", "feedback");
+  const heardEl = el("p", "heard");
+  const showHeard = (heard) => {
+    heardEl.textContent = heard ? `Приложение услышало: «${heard}»` : "Приложение ничего не услышало";
+  };
+  if (lastHeard !== null) showHeard(lastHeard);
+  const row = el("div", "row");
+
+  const listen = el("button", "choice", "🔊 Послушать");
+  listen.onclick = () => speak(text);
+  row.appendChild(listen);
+
+  if (speakMode === "self") {
+    const said = el("button", "primary", "✋ Я сказал");
+    said.onclick = () => { spokenCount++; next(); };
+    row.appendChild(said);
+  } else {
+    const mic = el("button", "primary", "🎤 Сказать");
+    mic.onclick = async () => {
+      mic.disabled = true;
+      listen.disabled = true;   // пока микрофон занят, послушать нельзя
+      feedback.className = "feedback";
+      feedback.textContent = PHRASES.go;
+      heardEl.textContent = "";
+      await speakWait(PHRASES.go);
+      feedback.textContent = "🎤";
+      const res = await listenOnce(text, ACCURACY_LEVELS[accuracy].threshold);
+      if (res.status === "match") {
+        spokenCount++;
+        const fb = randomFeedback("correct");
+        feedback.textContent = fb.text;
+        feedback.className = "feedback ok";
+        await speakWait(fb.text, fb.audioFileId);
+        await pause(300);
+        next();
+      } else if (res.status === "denied" || res.status === "unsupported" || res.status === "error") {
+        speakMode = "self";
+        feedback.textContent = PHRASES.noMic;
+        feedback.className = "feedback no";
+        await speakWait(PHRASES.noMic);
+        await pause(300);
+        renderSay(i, 0);
+      } else if (attempts + 1 >= maxTries) {
+        showHeard(res.heard);
+        feedback.textContent = PHRASES.together;
+        feedback.className = "feedback";
+        await speakWait(PHRASES.together);
+        await speakWait(text);
+        await pause(300);
+        next();
+      } else {
+        showHeard(res.heard);
+        const fb = randomFeedback("tryAgain");
+        feedback.textContent = fb.text;
+        feedback.className = "feedback no";
+        await speakWait(fb.text, fb.audioFileId);
+        await pause(300);
+        renderSay(i, attempts + 1, res.heard);
+      }
+    };
+    row.appendChild(mic);
+  }
+  app.appendChild(row);
+  app.appendChild(feedback);
+  app.appendChild(heardEl);
+  if (attempts === 0) {
+    speak(text);
+    speak(PHRASES.sayIt, null, { queue: true });
+  }
+}
+
+// ---------- НОВЫЙ КОНТЕКСТ ----------
+function renderStory() {
+  clear();
+  const s = stories[partIndex];
+  app.appendChild(el("div", "emoji-big", s.image));
+  app.appendChild(el("p", "sentence", s.text));
+  const next = el("button", "primary", "Готово");
+  next.onclick = renderPartResults;
+  app.appendChild(next);
+  speak(s.text);
+}
+
+// ---------- Результаты части ----------
+async function renderPartResults() {
+  clear();
+  const total = quiz.length;
+  const isLast = partIndex === partMeta.length - 1;
+  app.appendChild(el("h2", "headline", PHRASES.great));
+  speak(PHRASES.great);
+  app.appendChild(el("p", "stars", "⭐".repeat(correctCount) + "☆".repeat(total - correctCount)));
+  app.appendChild(el("p", "hint", `${correctCount} / ${total}`));
+  app.appendChild(el("p", "hint", `🎤 ${spokenCount} / ${sayItems.length}`));
+  app.appendChild(el("p", "hint", `Часть ${partMeta[partIndex].letter} из ${partMeta.length}`));
+  const btn = el("button", "primary", isLast ? "Играть ещё раз" : "Дальше");
+  btn.onclick = () => (isLast
+    ? renderSettings(() => startPart(0))
+    : startPart(partIndex + 1));
+  app.appendChild(btn);
+  await saveProgress(partMeta[partIndex].id, { correct: correctCount, total, spokenCount, speakMode });
+}
+
+// ---------- Старт ----------
+document.getElementById("gear").onclick = () => renderSettings(() => startPart(partIndex));
+ready().then(() => renderSettings(() => startPart(0)));
+</script>
+</body>
+</html>
